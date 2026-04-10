@@ -2,6 +2,8 @@
 
 Milestone M1 implementation for a Windows desktop Telegram manager panel.
 
+Supported Python: **3.10+** (verified for 3.10 compatibility).
+
 ## Run
 
 ```bash

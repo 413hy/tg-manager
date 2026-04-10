@@ -1,4 +1,4 @@
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 
 from app.infra.sqlite_repo import SQLiteRepository
 from app.services.log_service import LogService
@@ -19,7 +19,7 @@ class AccountService:
 
     def poll_account_status_once(self) -> None:
         accounts = self.repo.list_accounts()
-        now = datetime.now(UTC).isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         if not accounts:
             self.logger.emit("INFO", "AccountService", "No accounts to poll")
             return
