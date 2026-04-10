@@ -1,5 +1,5 @@
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (
+from app.ui.qt import Qt
+from app.ui.qt import (
     QFormLayout,
     QGroupBox,
     QHBoxLayout,

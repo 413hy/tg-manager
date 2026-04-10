@@ -1,6 +1,6 @@
 import sys
 
-from PySide6.QtWidgets import QApplication
+from app.ui.qt import QApplication
 
 from app.bootstrap import build_container
 from app.ui.main_window import MainWindow

@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QHeaderView, QTableWidget, QTableWidgetItem
+from app.ui.qt import QHeaderView, QTableWidget, QTableWidgetItem
 
 
 class AccountTableWidget(QTableWidget):
@@ -7,7 +7,12 @@ class AccountTableWidget(QTableWidget):
     def __init__(self) -> None:
         super().__init__(0, len(self.HEADERS))
         self.setHorizontalHeaderLabels(self.HEADERS)
-        self.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+
+        resize_mode = getattr(QHeaderView, "Stretch", None)
+        if resize_mode is None and hasattr(QHeaderView, "ResizeMode"):
+            resize_mode = QHeaderView.ResizeMode.Stretch
+
+        self.horizontalHeader().setSectionResizeMode(resize_mode)
         self.setAlternatingRowColors(True)
 
     def load_rows(self, rows: list[dict]) -> None:

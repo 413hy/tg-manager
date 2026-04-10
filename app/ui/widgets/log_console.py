@@ -1,5 +1,4 @@
-from PySide6.QtGui import QTextCursor
-from PySide6.QtWidgets import QTextEdit
+from app.ui.qt import QTextCursor, QTextEdit
 
 
 class LogConsoleWidget(QTextEdit):
@@ -9,4 +8,7 @@ class LogConsoleWidget(QTextEdit):
 
     def append_line(self, text: str) -> None:
         self.append(text)
-        self.moveCursor(QTextCursor.End)
+        end_op = getattr(QTextCursor, "End", None)
+        if end_op is None and hasattr(QTextCursor, "MoveOperation"):
+            end_op = QTextCursor.MoveOperation.End
+        self.moveCursor(end_op)

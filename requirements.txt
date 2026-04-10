@@ -1,3 +1,4 @@
-PySide6>=6.7
-Telethon>=1.36
-qasync>=0.27
+# Pin PySide6 to 6.7.x to avoid wheel validation issues seen with some pip versions on Win10.
+PySide6==6.7.3
+Telethon>=1.36,<2
+qasync>=0.27,<0.29

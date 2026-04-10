@@ -7,7 +7,17 @@ Milestone M1 implementation for a Windows desktop Telegram manager panel.
 ```bash
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
+python -m pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
+python -m app.main
+```
+
+## Troubleshooting (Windows)
+
+If your environment still fails to install pinned PySide6 wheels, install PyQt6 and run the app with the same codebase (the project has a Qt compatibility layer):
+
+```bash
+pip install PyQt6
 python -m app.main
 ```
 
