@@ -1,0 +1,8 @@
+PySide6>=6.8
+qasync>=0.27
+Telethon>=1.38
+SQLAlchemy>=2.0
+alembic>=1.14
+pydantic>=2.9
+pytest>=8.3
+pytest-qt>=4.4
