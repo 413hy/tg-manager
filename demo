@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>LLDS TG Dashboard Replica</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet"/>
+<style data-purpose="custom-utilities">
+    .sidebar-bg { background-color: #2b3a4a; }
+    .sidebar-hover { background-color: #3b4b5b; }
+    .sidebar-active { background-color: #1e293b; border-left: 3px solid #3b82f6; }
+    .text-sidebar { color: #94a3b8; }
+    .text-sidebar-active { color: #f8fafc; }
+    
+    .table-header-bg { background-color: #f8fafc; }
+    .table-border { border-color: #e2e8f0; }
+    
+    .badge-blocked { background-color: #ef4444; color: white; }
+    .badge-network { background-color: #22c55e; color: white; }
+    .badge-account { background-color: #10b981; color: white; }
+    
+    .btn-red { background-color: #ef4444; color: white; }
+    .btn-yellow { background-color: #eab308; color: white; }
+    .btn-blue { background-color: #3b82f6; color: white; }
+    .btn-teal { background-color: #14b8a6; color: white; }
+    
+    .bg-light-yellow { background-color: #fef9c3; }
+    .bg-light-gray { background-color: #f1f5f9; }
+    
+    /* Scrollbar styling for table container */
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #f1f1f1;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #c1c1c1;
+      border-radius: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: #a8a8a8;
+    }
+  </style>
+</head>
+<body class="bg-gray-50 h-screen flex overflow-hidden font-sans text-sm">
+
+<!-- BEGIN: Main Content Area -->
+<div class="flex-1 flex flex-col h-full overflow-hidden bg-white">
+<!-- BEGIN: Top Header -->
+<header class="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-4 shrink-0">
+<div class="flex items-center text-gray-500 hover:text-gray-700 cursor-pointer">
+<i class="fa-solid fa-bars text-xl"></i>
+</div>
+<div class="flex items-center space-x-4 text-gray-500">
+<button class="hover:text-gray-700" style=""><i class="fa-regular fa-file-lines text-lg"></i></button>
+<button class="hover:text-gray-700" style=""><i class="fa-solid fa-gear text-lg"></i></button>
+<button class="hover:text-gray-700" style=""><i class="fa-regular fa-user text-lg"></i></button>
+</div>
+</header>
+<!-- END: Top Header -->
+<!-- BEGIN: Dashboard Content -->
+<main class="flex-1 overflow-y-auto p-2 custom-scrollbar flex flex-col gap-2">
+<!-- Toolbar Row 1 -->
+<div class="flex flex-wrap items-center gap-2 mb-1">
+<label class="flex items-center text-gray-700" style=""><input class="rounded border-gray-300 text-blue-600 shadow-sm mr-1" type="checkbox"/> 全部</label>
+<button class="btn-red px-3 py-1 rounded text-xs font-medium border border-transparent shadow-sm" style="">删除去重</button>
+<button class="btn-yellow px-3 py-1 rounded text-xs font-medium border border-transparent shadow-sm" style="">清空并封禁</button>
+<button class="btn-red px-3 py-1 rounded text-xs font-medium border border-transparent shadow-sm" style="">清空导入</button>
+<button class="btn-blue px-3 py-1 rounded text-xs font-medium border border-transparent shadow-sm" style="">注册号段</button>
+<button class="btn-blue px-3 py-1 rounded text-xs font-medium border border-transparent shadow-sm" style="">下线其他设备</button>
+<div class="flex-1"></div>
+<select class="border-gray-300 rounded text-xs py-1 pl-2 pr-6 shadow-sm">
+<option>Android</option>
+</select>
+<button class="btn-yellow px-3 py-1 rounded text-xs font-medium border border-transparent shadow-sm" style="">导入账户</button>
+<label class="flex items-center bg-yellow-100 px-2 py-1 rounded text-xs border border-yellow-300" style=""><input checked="" class="rounded border-gray-300 text-yellow-500 shadow-sm mr-1" type="checkbox"/> 兼容型</label>
+<button class="btn-blue px-3 py-1 rounded text-xs font-medium border border-transparent shadow-sm" style="">导出账户</button>
+</div>
+<!-- Toolbar Row 2 -->
+<div class="flex flex-wrap items-center gap-2 mb-2 bg-gray-100 p-1.5 rounded border border-gray-200">
+<select class="border-gray-300 rounded text-xs py-1 pl-2 pr-6 shadow-sm"><option>全部</option></select>
+<input class="border-gray-300 rounded text-xs py-1 px-2 w-16 shadow-sm text-center" type="number" value="14"/>
+<span class="text-gray-500" style="">~</span>
+<input class="border-gray-300 rounded text-xs py-1 px-2 w-16 shadow-sm text-center" type="number" value="100"/>
+<button class="bg-white border border-gray-300 px-2 py-1 rounded text-xs shadow-sm hover:bg-gray-50" style="">选择</button>
+<button class="bg-white border border-gray-300 px-2 py-1 rounded text-xs shadow-sm hover:bg-gray-50" style="">选择</button>
+<div class="flex items-center ml-2 text-xs">
+<span class="mr-2" style="">代理</span>
+<select class="border-gray-300 rounded text-xs py-1 pl-2 pr-6 shadow-sm w-40"><option>代理 (System)</option></select>
+</div>
+<div class="flex-1"></div>
+<button class="text-teal-600 hover:text-teal-800" style=""><i class="fa-solid fa-arrows-rotate"></i></button>
+<button class="btn-teal px-3 py-1 rounded text-xs font-medium border border-transparent shadow-sm" style="">批量切换代理</button>
+<button class="btn-red px-3 py-1 rounded text-xs font-medium border border-transparent shadow-sm" style="">分配代理</button>
+</div>
+<!-- Table Section -->
+<div class="border table-border rounded flex-1 min-h-[250px] flex flex-col bg-white overflow-hidden shadow-sm">
+<div class="overflow-x-auto custom-scrollbar flex-1">
+<table class="w-full text-left border-collapse whitespace-nowrap text-xs">
+<thead class="table-header-bg border-b table-border sticky top-0 z-10">
+<tr>
+<th class="p-2 w-8 text-center border-r table-border" style=""><input class="rounded border-gray-300 text-blue-600" type="checkbox"/></th>
+<th class="p-2 w-12 text-center border-r table-border font-medium text-gray-700" style="">#</th>
+<th class="p-2 border-r table-border font-medium text-gray-700" style="">手机号码</th>
+<th class="p-2 border-r table-border font-medium text-gray-700" style="">状态</th>
+<th class="p-2 border-r table-border font-medium text-gray-700" style="">网络状态</th>
+<th class="p-2 border-r table-border font-medium text-gray-700" style="">账号状态</th>
+<th class="p-2 border-r table-border font-medium text-gray-700" style="">限制</th>
+<th class="p-2 border-r table-border font-medium text-gray-700" style="">显示名称</th>
+<th class="p-2 font-medium text-gray-700" style="">代理</th>
+</tr>
+</thead>
+<tbody class="divide-y table-border text-gray-600">
+<tr class="hover:bg-gray-50">
+<td class="p-2 text-center border-r table-border" style=""><input class="rounded border-gray-300 text-blue-600" type="checkbox"/></td>
+<td class="p-2 text-center border-r table-border" style="">1</td>
+<td class="p-2 border-r table-border flex items-center" style=""><i class="fa-regular fa-circle text-[10px] mr-1"></i> +601164451200</td>
+<td class="p-2 border-r table-border" style=""><span class="badge-blocked px-1.5 py-0.5 rounded text-[10px]" style="">Blocked</span></td>
+<td class="p-2 border-r table-border" style="">未连接</td>
+<td class="p-2 border-r table-border" style="">未登录</td>
+<td class="p-2 border-r table-border" style=""></td>
+<td class="p-2 border-r table-border" style="">Pat Resender</td>
+<td class="p-2" style="">None</td>
+</tr>
+<tr class="hover:bg-gray-50">
+<td class="p-2 text-center border-r table-border" style=""><input class="rounded border-gray-300 text-blue-600" type="checkbox"/></td>
+<td class="p-2 text-center border-r table-border" style="">2</td>
+<td class="p-2 border-r table-border flex items-center" style=""><i class="fa-solid fa-mobile-screen-button text-[10px] mr-1 text-gray-400"></i> +6238339170744</td>
+<td class="p-2 border-r table-border" style=""><span class="badge-blocked px-1.5 py-0.5 rounded text-[10px]" style="">Blocked</span></td>
+<td class="p-2 border-r table-border" style="">网段接</td>
+<td class="p-2 border-r table-border" style="">未登录</td>
+<td class="p-2 border-r table-border" style=""></td>
+<td class="p-2 border-r table-border" style="">Carroll Amistrong</td>
+<td class="p-2" style="">None</td>
+</tr>
+<tr class="hover:bg-gray-50">
+<td class="p-2 text-center border-r table-border" style=""><input class="rounded border-gray-300 text-blue-600" type="checkbox"/></td>
+<td class="p-2 text-center border-r table-border" style="">3</td>
+<td class="p-2 border-r table-border flex items-center" style=""><i class="fa-solid fa-mobile-screen-button text-[10px] mr-1 text-gray-400"></i> +6287854870077</td>
+<td class="p-2 border-r table-border" style=""><span class="badge-blocked px-1.5 py-0.5 rounded text-[10px]" style="">Blocked</span></td>
+<td class="p-2 border-r table-border" style="">未连接</td>
+<td class="p-2 border-r table-border" style="">未登录</td>
+<td class="p-2 border-r table-border" style=""></td>
+<td class="p-2 border-r table-border" style="">Real Velasquez</td>
+<td class="p-2" style="">None</td>
+</tr>
+<tr class="hover:bg-gray-50">
+<td class="p-2 text-center border-r table-border" style=""><input class="rounded border-gray-300 text-blue-600" type="checkbox"/></td>
+<td class="p-2 text-center border-r table-border" style="">4</td>
+<td class="p-2 border-r table-border flex items-center" style=""><i class="fa-solid fa-mobile-screen-button text-[10px] mr-1 text-gray-400"></i> +628954480426</td>
+<td class="p-2 border-r table-border" style=""><span class="badge-network px-1.5 py-0.5 rounded text-[10px]" style="">Network</span></td>
+<td class="p-2 border-r table-border" style="">未连接</td>
+<td class="p-2 border-r table-border" style="">未登录</td>
+<td class="p-2 border-r table-border" style=""></td>
+<td class="p-2 border-r table-border" style="">Rosie Nance</td>
+<td class="p-2" style="">None</td>
+</tr>
+<tr class="bg-pink-50 hover:bg-pink-100">
+<td class="p-2 text-center border-r table-border" style=""><input class="rounded border-gray-300 text-blue-600" type="checkbox"/></td>
+<td class="p-2 text-center border-r table-border flex justify-center items-center h-full" style="">
+<img alt="Avatar" class="w-4 h-4 rounded-full mr-1" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC7VmCCFNLyGm4ugxHWJLgack2xlhNnpljrvDsmpb0BtTyPxwTpsNep-UkUt4cyMcXdf9XSW0wk5y4vFAOr1yMV1yhL5WlP0HK88M2x8IY-0qFPgEz3Jv7LHfqbdzCULJi7P4_vMlNc00Bto6XgMsnbv2sRfyJKmzJhFBVMRG9fB7UBCL2RyySp9_t_409ARqa1GadKRhFRIqvmTWj7dpv2Tk1mug_kUzPQMmNeWE7xN7Q8hcIv5d1U35OyCNIyDXsIxqoS9NOw7pk" style=""/> 5
+                </td>
+<td class="p-2 border-r table-border flex items-center" style=""><i class="fa-solid fa-mobile-screen-button text-[10px] mr-1 text-gray-400"></i> +6289554487026</td>
+<td class="p-2 border-r table-border" style=""><span class="badge-blocked px-1.5 py-0.5 rounded text-[10px]" style="">Blocked</span></td>
+<td class="p-2 border-r table-border" style="">网段接</td>
+<td class="p-2 border-r table-border" style="">未登录</td>
+<td class="p-2 border-r table-border" style=""></td>
+<td class="p-2 border-r table-border" style="">Kerry Kirhland</td>
+<td class="p-2" style="">None</td>
+</tr>
+<tr class="hover:bg-gray-50">
+<td class="p-2 text-center border-r table-border" style=""><input class="rounded border-gray-300 text-blue-600" type="checkbox"/></td>
+<td class="p-2 text-center border-r table-border" style="">6</td>
+<td class="p-2 border-r table-border flex items-center" style=""><i class="fa-regular fa-circle text-[10px] mr-1 text-gray-400"></i> +60165521296</td>
+<td class="p-2 border-r table-border" style=""><span class="badge-blocked px-1.5 py-0.5 rounded text-[10px]" style="">Blocked</span></td>
+<td class="p-2 border-r table-border" style="">未连接</td>
+<td class="p-2 border-r table-border" style="">未登录</td>
+<td class="p-2 border-r table-border" style=""></td>
+<td class="p-2 border-r table-border" style="">Jeannette Rezendes</td>
+<td class="p-2" style="">None</td>
+</tr>
+<tr class="hover:bg-gray-50">
+<td class="p-2 text-center border-r table-border" style=""><input class="rounded border-gray-300 text-blue-600" type="checkbox"/></td>
+<td class="p-2 text-center border-r table-border" style="">7</td>
+<td class="p-2 border-r table-border flex items-center" style=""><i class="fa-regular fa-circle text-[10px] mr-1 text-gray-400"></i> +601166937451</td>
+<td class="p-2 border-r table-border" style=""><span class="badge-network px-1.5 py-0.5 rounded text-[10px]" style="">Network</span></td>
+<td class="p-2 border-r table-border" style="">阿接接</td>
+<td class="p-2 border-r table-border" style="">未登录</td>
+<td class="p-2 border-r table-border" style=""></td>
+<td class="p-2 border-r table-border" style="">Antonio Carranza</td>
+<td class="p-2" style="">None</td>
+</tr>
+<tr class="hover:bg-gray-50">
+<td class="p-2 text-center border-r table-border" style=""><input class="rounded border-gray-300 text-blue-600" type="checkbox"/></td>
+<td class="p-2 text-center border-r table-border" style="">8</td>
+<td class="p-2 border-r table-border flex items-center" style=""><i class="fa-regular fa-circle text-[10px] mr-1 text-gray-400"></i> +687646002486</td>
+<td class="p-2 border-r table-border" style=""><span class="badge-account px-1.5 py-0.5 rounded text-[10px]" style="">Account</span></td>
+<td class="p-2 border-r table-border" style="">未连接</td>
+<td class="p-2 border-r table-border" style="">未登录</td>
+<td class="p-2 border-r table-border" style=""></td>
+<td class="p-2 border-r table-border" style="">Marcio Helnlon</td>
+<td class="p-2" style="">None</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<!-- Complex Form Area 1 -->
+<div class="bg-light-yellow border border-yellow-200 rounded p-2 text-xs flex flex-col gap-2">
+<div class="flex items-center justify-between">
+<div class="text-gray-600" style="">总数/搜索/已登录/未登 <span class="text-blue-600" style="">13/0/0/13</span></div>
+<div class="flex items-center gap-2">
+<span class="text-gray-600" style="">筛选</span>
+<select class="border-gray-300 rounded text-xs py-0.5 pl-1 pr-6"><option>全部</option></select>
+<input class="border-gray-300 rounded text-xs py-0.5 px-2 w-24 bg-gray-50" placeholder="筛选" type="text"/>
+<button class="btn-red px-2 py-0.5 rounded text-xs" style="">退出登录删除</button>
+<button class="btn-yellow px-2 py-0.5 rounded text-xs" style="">申请解除限制</button>
+<button class="bg-green-500 text-white px-2 py-0.5 rounded text-xs" style="">批量踢出</button>
+<button class="btn-teal px-2 py-0.5 rounded text-xs" style="">批量下线</button>
+<button class="btn-teal px-2 py-0.5 rounded text-xs" style="">清除缓存</button>
+<button class="text-teal-600" style=""><i class="fa-solid fa-arrows-rotate"></i></button>
+</div>
+</div>
+<div class="flex gap-4">
+<!-- Textarea group 1 -->
+<div class="flex-1 flex flex-col">
+<label class="flex items-center mb-1" style=""><input class="rounded border-gray-300 mr-1" type="checkbox"/> 显示名字</label>
+<textarea class="border-gray-300 rounded text-xs w-full h-12 p-1 resize-none bg-white" placeholder="姓名----名字"></textarea>
+</div>
+<!-- Textarea group 2 -->
+<div class="flex-1 flex flex-col">
+<label class="flex items-center mb-1" style=""><input checked="" class="rounded border-gray-300 mr-1" type="checkbox"/> 用户名</label>
+<textarea class="border-gray-300 rounded text-xs w-full h-12 p-1 resize-none bg-white" placeholder="自定义名称"></textarea>
+</div>
+<!-- Textarea group 3 -->
+<div class="flex-1 flex flex-col">
+<label class="flex items-center mb-1" style=""><input class="rounded border-gray-300 mr-1" type="checkbox"/> 介绍</label>
+<textarea class="border-gray-300 rounded text-xs w-full h-12 p-1 resize-none bg-white" placeholder="自定义"></textarea>
+</div>
+<!-- Options group -->
+<div class="w-64 flex flex-col gap-1 justify-center">
+<div class="flex items-center gap-2">
+<label class="flex items-center" style=""><input class="rounded border-gray-300 mr-1" type="checkbox"/> 自动删除消息(天)</label>
+<input class="border-gray-300 rounded text-xs py-0.5 px-1 w-12 text-center bg-gray-50" type="number" value="1"/>
+<label class="flex items-center ml-2" style=""><input class="rounded border-gray-300 mr-1" type="checkbox"/> NSFW(半年内不封)</label>
+</div>
+<div class="flex items-center gap-2">
+<label class="flex items-center" style=""><input class="rounded border-gray-300 mr-1" type="checkbox"/> 隐藏手机号</label>
+<label class="flex items-center ml-auto" style=""><input class="rounded border-gray-300 mr-1" type="checkbox"/> 显示手机号</label>
+</div>
+<div class="flex items-center gap-2 mt-1">
+<label class="flex items-center" style=""><input checked="" class="rounded border-gray-300 mr-1" type="checkbox"/> 头像</label>
+<div class="flex border border-gray-300 rounded overflow-hidden flex-1 bg-white">
+<input class="border-0 text-xs py-0.5 px-1 w-full focus:ring-0" placeholder="自定义" type="text"/>
+<button class="bg-gray-100 px-2 border-l border-gray-300 text-gray-600 hover:bg-gray-200" style="">选择</button>
+</div>
+</div>
+</div>
+<!-- Action Button -->
+<div class="flex items-center justify-center pl-2">
+<button class="bg-gray-200 border border-gray-300 rounded px-4 py-2 font-medium hover:bg-gray-300" style="">批量随机更新</button>
+</div>
+</div>
+</div>
+<!-- Complex Form Area 2 -->
+<div class="bg-light-gray border border-gray-200 rounded p-2 text-xs flex flex-col gap-2">
+<div class="text-gray-700" style="">账号信息 +85254333203</div>
+<div class="flex flex-wrap gap-4 items-center">
+<div class="flex items-center gap-2">
+<label class="w-10 text-right" style="">用户名</label>
+<input class="border-gray-300 rounded text-xs py-1 px-2 w-32 bg-white" type="text"/>
+</div>
+<div class="flex items-center gap-2">
+<label class="w-8 text-right" style="">姓氏</label>
+<input class="border-gray-300 rounded text-xs py-1 px-2 w-32 bg-white" type="text"/>
+</div>
+<div class="flex items-center gap-2 flex-1">
+<label class="w-8 text-right" style="">介绍</label>
+<input class="border-gray-300 rounded text-xs py-1 px-2 w-full bg-white" type="text"/>
+</div>
+<div class="flex items-center gap-2">
+<div class="text-center w-12 text-[10px] text-red-500 leading-tight" style="">
+              头像<br/>双击选择
+            </div>
+<div class="w-12 h-12 bg-white border border-gray-300 rounded"></div>
+<button class="bg-gray-200 border border-gray-300 rounded px-2 py-1 h-10 w-20 leading-tight hover:bg-gray-300" style="">生成随机头像</button>
+</div>
+<div class="flex flex-col gap-1">
+<button class="bg-gray-200 border border-gray-300 rounded px-3 py-1 hover:bg-gray-300" style="">更新新服务器</button>
+<button class="bg-gray-200 border border-gray-300 rounded px-3 py-1 hover:bg-gray-300" style="">从服务器获取</button>
+</div>
+<div class="flex flex-col gap-1">
+<button class="btn-yellow rounded px-3 py-1 border border-transparent" style="">获取官方通知</button>
+<button class="btn-yellow rounded px-3 py-1 border border-transparent" style="">获取设备信息</button>
+</div>
+</div>
+<div class="flex items-center gap-2 mt-1">
+<label class="w-10 text-right" style="">名字</label>
+<input class="border-gray-300 rounded text-xs py-1 px-2 w-48 bg-white" type="text" value="Gloria Esiex"/>
+</div>
+<div class="border-t border-gray-300 my-1 pt-1">
+<div class="text-gray-700 font-medium mb-1" style="">手动注册/登录</div>
+<div class="flex flex-wrap items-center gap-2">
+<label class="" style="">手机号(Y)</label>
+<input class="border-gray-300 rounded text-xs py-1 px-2 w-32 bg-white" type="text" value="+85254333205"/>
+<select class="border-gray-300 rounded text-xs py-1 pl-1 pr-6 bg-white"><option>TG</option></select>
+<label class="" style="">代理(D)</label>
+<select class="border-gray-300 rounded text-xs py-1 pl-1 pr-6 w-32 bg-white"><option>默认(System)</option></select>
+<button class="bg-gray-200 border border-gray-300 rounded px-2 py-1 hover:bg-gray-300" style="">获取验证码/切换代理</button>
+<label class="" style="">验证码(3)</label>
+<input class="border-gray-300 rounded text-xs py-1 px-2 w-20 bg-white" type="text"/>
+<label class="" style="">二次验证密码(S)</label>
+<input class="border-gray-300 rounded text-xs py-1 px-2 w-24 bg-white" type="text"/>
+<button class="bg-gray-200 border border-gray-300 rounded px-4 py-1 hover:bg-gray-300 ml-auto" style="">登录</button>
+</div>
+<div class="flex justify-between text-[10px] mt-1">
+<span class="text-red-500" style="">格式：(国家码)手机号 例如: +8613888888888</span>
+<span class="text-red-500" style="">不同账号可使用不同代理进行操作</span>
+<span class="text-red-500" style="">根据日志提示需要输入验证码的操作</span>
+<span class="text-red-500" style="">如需要二次密码，请将验证码一起提交</span>
+</div>
+</div>
+</div>
+<!-- Log Output Area -->
+<div class="border border-gray-300 rounded bg-white flex flex-col h-32 shrink-0">
+<div class="bg-gray-100 border-b border-gray-300 px-2 py-1 text-xs font-medium text-gray-700" style="">目录</div>
+<div class="p-2 overflow-y-auto text-xs font-mono custom-scrollbar text-green-600 leading-tight" style="">
+          [2023-05-29 14:16:30.264] +85261415033&gt; Export Account Success<br/>
+          [2023-05-29 14:16:30.264] +85261442947&gt; Export Account Success<br/>
+          [2023-05-29 14:16:30.294] +85261442647&gt; Export Account Success<br/>
+          [2023-05-29 14:16:30.264] +85261462343&gt; Export Account Success<br/>
+          [2023-05-29 14:16:30.264] +85261403344&gt; Export Account Success<br/>
+          [2023-05-29 14:16:30.057] +85261403344&gt; Export Account Success<br/>
+          [2023-05-29 14:16:30.257] +85261415031&gt; Export Account Success<br/>
+</div>
+</div>
+</main>
+<!-- END: Dashboard Content -->
+</div>
+<!-- END: Main Content Area -->
+</body></html>
