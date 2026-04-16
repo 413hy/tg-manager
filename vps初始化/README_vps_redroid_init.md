@@ -41,9 +41,16 @@ init_redroid_env.sh
 scp init_redroid_env.sh root@YOUR_VPS_IP:/root/
 ```
 
+远程获取脚本
+
+```bash
+wget https://raw.githubusercontent.com/413hy/s5/main/warp/warp.sh
+```
+
 然后在 VPS 上执行：
 
 ```bash
+cd /root
 chmod +x /root/init_redroid_env.sh
 bash /root/init_redroid_env.sh
 ```
