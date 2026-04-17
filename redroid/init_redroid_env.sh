@@ -5,7 +5,7 @@ set -Eeuo pipefail
 # Supported families: Alpine, Debian/Ubuntu, RHEL/CentOS Stream/Rocky/AlmaLinux
 # Run as root.
 
-SCRIPT_VERSION="2026-04-16"
+SCRIPT_VERSION="2026-04-17-fixed"
 
 # ===== Configurable defaults =====
 REDROID_IMAGE="${REDROID_IMAGE:-redroid/redroid:12.0.0_64only-latest}"
@@ -257,7 +257,11 @@ install_appium() {
   log "Installing Appium and UiAutomator2 driver"
   need_cmd npm
   npm i --location=global appium
-  appium driver install uiautomator2 || true
+  if ! appium driver list --installed 2>/dev/null | grep -q 'uiautomator2@'; then
+    appium driver install uiautomator2
+  else
+    log "Appium UiAutomator2 driver already installed; skipping"
+  fi
 
   cat >/usr/local/bin/start-appium-redroid <<'EOF_APP'
 #!/usr/bin/env bash
@@ -317,30 +321,30 @@ write_redroid_helpers() {
   cat >/usr/local/bin/start-redroid <<EOF_RED
 #!/usr/bin/env bash
 set -euo pipefail
-REDROID_IMAGE="\\${REDROID_IMAGE:-$REDROID_IMAGE}"
-REDROID_NAME="\\${REDROID_NAME:-$REDROID_NAME}"
-REDROID_DATA_DIR="\\${REDROID_DATA_DIR:-$REDROID_DATA_DIR}"
-REDROID_HOST_ADB_PORT="\\${REDROID_HOST_ADB_PORT:-$REDROID_HOST_ADB_PORT}"
-mkdir -p "\\$REDROID_DATA_DIR"
-docker rm -f "\\$REDROID_NAME" >/dev/null 2>&1 || true
-docker run -itd --rm --privileged \\
-  --pull always \\
-  -v /dev/binder:/dev/binder \\
-  -v /dev/hwbinder:/dev/hwbinder \\
-  -v /dev/vndbinder:/dev/vndbinder \\
-  -v "\\$REDROID_DATA_DIR:/data" \\
-  -p "\\$REDROID_HOST_ADB_PORT:5555" \\
-  --name "\\$REDROID_NAME" \\
-  "\\$REDROID_IMAGE"
+REDROID_IMAGE="\${REDROID_IMAGE:-$REDROID_IMAGE}"
+REDROID_NAME="\${REDROID_NAME:-$REDROID_NAME}"
+REDROID_DATA_DIR="\${REDROID_DATA_DIR:-$REDROID_DATA_DIR}"
+REDROID_HOST_ADB_PORT="\${REDROID_HOST_ADB_PORT:-$REDROID_HOST_ADB_PORT}"
+mkdir -p "\$REDROID_DATA_DIR"
+docker rm -f "\$REDROID_NAME" >/dev/null 2>&1 || true
+docker run -itd --rm --privileged \
+  --pull always \
+  -v /dev/binder:/dev/binder \
+  -v /dev/hwbinder:/dev/hwbinder \
+  -v /dev/vndbinder:/dev/vndbinder \
+  -v "\$REDROID_DATA_DIR:/data" \
+  -p "\$REDROID_HOST_ADB_PORT:5555" \
+  --name "\$REDROID_NAME" \
+  "\$REDROID_IMAGE"
 EOF_RED
   chmod +x /usr/local/bin/start-redroid
 
   cat >/usr/local/bin/connect-redroid-adb <<EOF_ADB
 #!/usr/bin/env bash
 set -euo pipefail
-PORT="\\${1:-$REDROID_HOST_ADB_PORT}"
+PORT="\${1:-$REDROID_HOST_ADB_PORT}"
 adb start-server >/dev/null 2>&1 || true
-adb connect "127.0.0.1:\\$PORT"
+adb connect "127.0.0.1:\$PORT"
 adb devices
 EOF_ADB
   chmod +x /usr/local/bin/connect-redroid-adb
