@@ -44,7 +44,7 @@ scp init_redroid_env.sh root@YOUR_VPS_IP:/root/
 远程获取脚本
 
 ```bash
-wget https://raw.githubusercontent.com/413hy/tg-manager/tg-mg/vps/README_vps_redroid_init.md
+wget https://raw.githubusercontent.com/413hy/tg-manager/tg-mg/redroid/init_redroid_env.sh
 ```
 
 然后在 VPS 上执行：
