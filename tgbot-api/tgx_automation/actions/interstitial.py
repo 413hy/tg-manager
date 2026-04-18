@@ -8,6 +8,17 @@ from tgx_automation.ui_xml import (
 )
 
 
+POPUP_HINTS = [
+    "start setting up",
+    "folders are here",
+    "never",
+    "skip",
+    "not now",
+    "later",
+    "more_btn_logout",
+]
+
+
 def _tap_node(adb: AdbClient, node) -> bool:
     if not node:
         return False
@@ -18,11 +29,24 @@ def _tap_node(adb: AdbClient, node) -> bool:
     return True
 
 
+def _try_back_first(adb: AdbClient, xml: str) -> bool:
+    x = xml.lower()
+    if any(h in x for h in POPUP_HINTS):
+        adb.keyevent(4)
+        return True
+    return False
+
+
 def handle_common_interstitials(adb: AdbClient) -> list[str]:
     actions: list[str] = []
     xml = adb.dump_ui_xml()
 
-    # Prefer explicit skip/never/not-now buttons
+    # Most stable strategy in practice: back key first for transient overlays.
+    if _try_back_first(adb, xml):
+        actions.append("pressed BACK to dismiss popup/interstitial")
+        return actions
+
+    # If back didn't apply, fallback to explicit buttons.
     skip_node = find_node_by_text(xml, ["never", "skip", "not now", "later"])
     if _tap_node(adb, skip_node):
         actions.append(f"clicked interstitial text button: {skip_node.text}")
@@ -42,9 +66,5 @@ def handle_common_interstitials(adb: AdbClient) -> list[str]:
     if _tap_node(adb, close):
         actions.append("clicked top-right close")
         return actions
-
-    if "more_btn_logout" in xml.lower():
-        adb.keyevent(4)
-        actions.append("dismissed logout menu")
 
     return actions

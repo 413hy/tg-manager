@@ -37,5 +37,5 @@ uvicorn tgx_automation.api.main:app --host 0.0.0.0 --port 8080
 
 ## Auto behavior
 - On `start messaging` page, router auto-clicks Start Messaging.
-- On interstitial pages (`never`, `skip`, `not now`, `later`, `x`-style close), router auto-dismisses.
+- On interstitial pages, router first tries BACK key (most stable), then falls back to `never/skip/not now/later/start/btn_done/x`.
 - On unknown pages, router can recover to home by back/back/back + relaunch.
