@@ -28,7 +28,14 @@ uvicorn tgx_automation.api.main:app --host 0.0.0.0 --port 8080
 - `POST /actions/name`
 - `POST /actions/recover-home`
 - `POST /router/step`
+- `POST /router/auto`
 
 ## Notes
 - This project is designed for redroid + ADB usage.
 - Unknown pages do not hard-fail by default; router can attempt interstitial handling or home recovery.
+
+
+## Auto behavior
+- On `start messaging` page, router auto-clicks Start Messaging.
+- On interstitial pages (`never`, `skip`, `not now`, `later`, `x`-style close), router auto-dismisses.
+- On unknown pages, router can recover to home by back/back/back + relaunch.

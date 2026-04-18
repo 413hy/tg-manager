@@ -1,11 +1,25 @@
 from __future__ import annotations
 
 from tgx_automation.adb_client import AdbClient
+from tgx_automation.ui_xml import find_node_by_resource, find_node_by_text
 
 
 def click_start_messaging(adb: AdbClient) -> str:
-    adb.tap(360, 1104)
-    return "clicked start messaging"
+    xml = adb.dump_ui_xml()
+    node = find_node_by_text(xml, ["start messaging"])
+    if not node:
+        node = find_node_by_resource(xml, ["btn_done"])
+
+    if node and node.center:
+        adb.tap(*node.center)
+        return "clicked start messaging"
+
+    # fallback only when marker exists but button parse failed
+    if "start messaging" in xml.lower():
+        adb.tap(360, 1104)
+        return "clicked start messaging (fallback)"
+
+    return "start messaging not found"
 
 
 def fill_phone(adb: AdbClient, country: str, code: str, phone: str) -> list[str]:

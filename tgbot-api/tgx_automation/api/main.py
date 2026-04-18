@@ -4,7 +4,7 @@ import random
 import string
 
 from fastapi import FastAPI
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from tgx_automation.actions import login as login_actions
 from tgx_automation.actions import profile as profile_actions
@@ -43,6 +43,10 @@ class NameReq(BaseModel):
     last_name: str
 
 
+class AutoRouterReq(BaseModel):
+    max_steps: int = 6
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"ok": "true"}
@@ -57,6 +61,13 @@ def state() -> dict:
 def router_step() -> dict:
     rs = svc.step_router()
     return {"page": rs.page, "actions": rs.actions, "note": rs.note}
+
+
+
+
+@app.post("/router/auto")
+def router_auto(req: AutoRouterReq) -> dict:
+    return svc.auto_router(max_steps=req.max_steps)
 
 
 @app.post("/actions/handle-interstitials")
