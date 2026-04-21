@@ -24,10 +24,8 @@ def click_start_messaging(adb: AdbClient) -> str:
 
 def fill_phone(adb: AdbClient, country: str, code: str, phone: str) -> list[str]:
     steps = []
-    adb.tap(360, 260)
-    adb.input_text(country)
-    adb.keyevent(66)
-    steps.append("set country")
+    if country:
+        steps.append("skip country; Telegram X derives country from the dial code")
 
     adb.tap(120, 396)
     adb.keyevent(123)
@@ -40,8 +38,14 @@ def fill_phone(adb: AdbClient, country: str, code: str, phone: str) -> list[str]
     adb.input_text(phone)
     steps.append("set phone")
 
-    adb.tap(632, 570)
-    steps.append("submit phone")
+    xml = adb.dump_ui_xml()
+    done = find_node_by_resource(xml, ["btn_done"])
+    if done and done.center:
+        adb.tap(*done.center)
+        steps.append("submit phone")
+    else:
+        adb.tap(632, 650)
+        steps.append("submit phone (fallback)")
     return steps
 
 
@@ -56,3 +60,10 @@ def submit_password(adb: AdbClient, password: str) -> list[str]:
     adb.input_text(password)
     adb.tap(594, 612)
     return ["input password", "submit password"]
+
+
+def submit_current_text(adb: AdbClient, value: str, label: str = "value") -> list[str]:
+    adb.tap(360, 369)
+    adb.input_text(value)
+    adb.keyevent(66)
+    return [f"input {label}", "keyboard done"]

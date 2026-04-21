@@ -1,2 +1,5 @@
 __pycache__/
 *.pyc
+tgbot-api/.venv/
+tgbot-api/*.sqlite3
+tgbot-api/*.sqlite3-*

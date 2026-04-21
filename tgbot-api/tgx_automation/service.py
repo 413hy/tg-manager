@@ -62,5 +62,13 @@ class AutomationService:
         return {"steps": history, "final": self.debug_info()}
 
     def debug_info(self) -> dict[str, Any]:
-        snap = self.snapshot()
-        return {"page": snap.page, "hints": snap.hints, "excerpt": snap.xml_excerpt}
+        try:
+            snap = self.snapshot()
+            return {"page": snap.page, "hints": snap.hints, "excerpt": snap.xml_excerpt}
+        except Exception as exc:
+            return {
+                "page": PageType.UNKNOWN,
+                "hints": ["ui snapshot failed"],
+                "excerpt": "",
+                "error": str(exc),
+            }

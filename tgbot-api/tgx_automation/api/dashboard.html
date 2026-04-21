@@ -1,0 +1,624 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TG Manager</title>
+  <style>
+    :root {
+      --bg: #101214;
+      --surface: #171b1e;
+      --surface-2: #20262a;
+      --line: #323a40;
+      --text: #eef3f1;
+      --muted: #9aa5a2;
+      --accent: #b9f45f;
+      --accent-2: #48d4bb;
+      --danger: #ff7474;
+      --warn: #f4c95d;
+      --ok: #68d77a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      min-height: 76px;
+      padding: 16px 22px;
+      border-bottom: 1px solid var(--line);
+      background: #14181b;
+      position: sticky;
+      top: 0;
+      z-index: 5;
+    }
+    h1 {
+      margin: 0;
+      font-size: 22px;
+      letter-spacing: 0;
+    }
+    .sub {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    main {
+      display: grid;
+      grid-template-columns: minmax(520px, 1.15fr) minmax(420px, .85fr);
+      gap: 14px;
+      padding: 14px;
+    }
+    section {
+      border: 1px solid var(--line);
+      background: var(--surface);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 52px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: #191f22;
+    }
+    h2 {
+      margin: 0;
+      font-size: 15px;
+      letter-spacing: 0;
+    }
+    button {
+      border: 1px solid var(--line);
+      background: var(--surface-2);
+      color: var(--text);
+      min-height: 38px;
+      padding: 9px 11px;
+      border-radius: 7px;
+      cursor: pointer;
+      font: inherit;
+      white-space: nowrap;
+    }
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #12150f;
+      font-weight: 700;
+    }
+    button:disabled {
+      cursor: wait;
+      opacity: .58;
+    }
+    button:hover:not(:disabled) { border-color: var(--accent-2); }
+    input {
+      width: 100%;
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #0f1315;
+      color: var(--text);
+      padding: 9px 10px;
+      font: inherit;
+    }
+    select {
+      width: 100%;
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #0f1315;
+      color: var(--text);
+      padding: 9px 10px;
+      font: inherit;
+    }
+    label {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    th, td {
+      padding: 11px 10px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      color: var(--muted);
+      background: #20262a;
+      font-weight: 600;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+    tbody tr { cursor: pointer; }
+    tbody tr:hover { background: rgba(72, 212, 187, .06); }
+    tbody tr.active { background: rgba(185, 244, 95, .10); }
+    .table-wrap {
+      max-height: calc(100vh - 236px);
+      overflow: auto;
+    }
+    .phone { font-weight: 700; white-space: nowrap; }
+    .muted { color: var(--muted); }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 23px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: #273036;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .pill.ok { background: rgba(104, 215, 122, .14); color: var(--ok); }
+    .pill.warn { background: rgba(244, 201, 93, .14); color: var(--warn); }
+    .pill.bad { background: rgba(255, 116, 116, .14); color: var(--danger); }
+    .toolbar, .button-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .side {
+      display: grid;
+      gap: 14px;
+      align-content: start;
+    }
+    .panel-body {
+      display: grid;
+      gap: 12px;
+      padding: 14px;
+    }
+    .selected {
+      padding: 13px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #121619;
+      line-height: 1.55;
+    }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .inline {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: end;
+    }
+    .status {
+      padding: 10px 14px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+    }
+    pre {
+      margin: 0;
+      min-height: 190px;
+      max-height: 320px;
+      overflow: auto;
+      padding: 13px;
+      border-top: 1px solid var(--line);
+      background: #0b0e10;
+      color: #d7f7e7;
+      font-size: 12px;
+      white-space: pre-wrap;
+    }
+    .log-panel {
+      border-color: #3b474d;
+      background: #111518;
+    }
+    .log-panel .section-head {
+      background: #1e2529;
+    }
+    .hint {
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #111619;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    @media (max-width: 980px) {
+      header { align-items: flex-start; flex-direction: column; }
+      main { grid-template-columns: 1fr; }
+      .table-wrap { max-height: none; }
+    }
+    @media (max-width: 620px) {
+      main { padding: 10px; }
+      .grid-2, .inline { grid-template-columns: 1fr; }
+      .hide-sm { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>TG Manager</h1>
+      <div class="sub">账号、资料、deeplink 和安全页面控制台</div>
+    </div>
+    <div class="toolbar">
+      <button id="refresh" class="primary">刷新账号</button>
+      <button id="state">读取当前页面</button>
+    </div>
+  </header>
+
+  <main>
+    <section>
+      <div class="section-head">
+        <h2>账号列表</h2>
+        <span id="count" class="pill">0</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>手机号</th>
+              <th>用户名</th>
+              <th class="hide-sm">姓名</th>
+              <th>状态</th>
+              <th>限制</th>
+            </tr>
+          </thead>
+          <tbody id="accounts"></tbody>
+        </table>
+      </div>
+      <div id="status" class="status">Ready.</div>
+    </section>
+
+    <div class="side">
+      <section class="log-panel">
+        <div class="section-head">
+          <h2>操作日志</h2>
+          <span id="logStatus" class="pill">Ready</span>
+        </div>
+        <pre id="log">Ready.</pre>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <h2>当前账号</h2>
+        </div>
+        <div class="panel-body">
+          <div id="selected" class="selected muted">请选择左侧账号</div>
+          <div class="button-row">
+            <button id="sync" class="primary">同步 Telegram</button>
+            <button id="switch">切换账号</button>
+            <button id="openSettings">打开 Settings</button>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <h2>添加账号</h2>
+        </div>
+        <div class="panel-body">
+          <div class="button-row">
+            <button id="openAddAccount">打开添加账号</button>
+            <button id="loginNext">检测下一步</button>
+          </div>
+          <div id="loginHint" class="hint">先点击“检测下一步”，系统会根据 Telegram X 当前页面提示需要填写的内容。</div>
+          <label>区号
+            <input id="loginCode" value="94" placeholder="86">
+          </label>
+          <label>手机号
+            <div class="inline">
+              <input id="loginPhone" placeholder="778807109">
+              <button id="loginStart">提交手机号</button>
+            </div>
+          </label>
+          <div class="grid-2">
+            <label>验证码
+              <input id="loginCodeValue" placeholder="12345">
+            </label>
+            <label>2FA 密码
+              <input id="loginPassword" type="password" placeholder="password">
+            </label>
+          </div>
+          <label>当前页面输入值
+            <input id="loginValue" placeholder="验证码 / 2FA 密码 / 邮箱 / 邮箱验证码">
+          </label>
+          <div class="button-row">
+            <button id="submitNext" class="primary">提交当前页面要求</button>
+            <button id="submitCode">提交验证码</button>
+            <button id="submitPassword">提交 2FA</button>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <h2>资料操作</h2>
+        </div>
+        <div class="panel-body">
+          <label>用户名
+            <div class="inline">
+              <input id="username" placeholder="new_username">
+              <button id="setUsername">设置用户名</button>
+            </div>
+          </label>
+          <div class="grid-2">
+            <label>First name
+              <input id="firstName" placeholder="First">
+            </label>
+            <label>Last name
+              <input id="lastName" placeholder="Last">
+            </label>
+          </div>
+          <div class="button-row">
+            <button id="setName">设置姓名</button>
+          </div>
+          <div class="grid-2">
+            <label>头像来源
+              <select id="avatarMode">
+                <option value="random">随机头像</option>
+                <option value="custom">自定义上传</option>
+                <option value="gallery">图库首张（未验证）</option>
+              </select>
+            </label>
+            <label>自定义图片
+              <input id="avatarFile" type="file" accept="image/png,image/jpeg,image/webp">
+            </label>
+          </div>
+          <button id="avatar">设置头像</button>
+        </div>
+      </section>
+
+      <section>
+        <div class="section-head">
+          <h2>Deeplink 和安全</h2>
+        </div>
+        <div class="panel-body">
+          <label>自定义 deeplink
+            <div class="inline">
+              <input id="deeplink" placeholder="https://t.me/bot?start=abc">
+              <button id="openLink">触发链接</button>
+            </div>
+          </label>
+          <div class="button-row">
+            <button id="openDevices">Devices</button>
+            <button id="openSessions">Active Sessions</button>
+            <button id="openPrivacy">Privacy</button>
+            <button id="open2fa">2FA</button>
+            <button id="openLoginEmail">Login Email</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    let rows = [];
+    let selected = null;
+    let busy = false;
+
+    const $ = (id) => document.getElementById(id);
+    const buttons = () => Array.from(document.querySelectorAll("button"));
+    const phone = (a) => a.country_code && a.local_phone ? `+${a.country_code} ${a.local_phone}` : a.phone_e164;
+    const name = (a) => [a.first_name, a.last_name].filter(Boolean).join(" ") || "-";
+    const statusClass = (a) => a.status === "active" ? "ok" : a.status === "code_sent" || a.status === "needs_password" ? "warn" : "";
+    const isFailure = (data) => Boolean(data && (data.error || data.verified === false));
+
+    function setBusy(value, message) {
+      busy = value;
+      buttons().forEach((button) => button.disabled = value);
+      if (message) $("status").textContent = message;
+    }
+
+    function log(value) {
+      $("log").textContent = typeof value === "string" ? value : JSON.stringify(value, null, 2);
+      $("logStatus").textContent = typeof value === "object" && value && isFailure(value) ? "Fail" : "Updated";
+      $("logStatus").className = typeof value === "object" && value && isFailure(value) ? "pill bad" : "pill ok";
+      $("log").scrollTop = 0;
+    }
+
+    function renderLoginRequirement(data) {
+      const req = data && (data.login_requirement || (data.state && data.state.login_requirement));
+      if (!req) return;
+      $("loginHint").textContent = `${req.message} required=${req.required}; fields=${(req.fields || []).join(", ") || "-"}`;
+    }
+
+    function ref() {
+      if (!selected) throw new Error("请先选择左侧账号");
+      return { phone_e164: selected.phone_e164 };
+    }
+
+    async function api(path, options = {}) {
+      const res = await fetch(path, {
+        headers: { "Content-Type": "application/json" },
+        ...options,
+      });
+      const text = await res.text();
+      let data = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch (err) {
+        throw new Error(`接口返回非 JSON: ${text.slice(0, 120)}`);
+      }
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      return data;
+    }
+
+    function renderRows() {
+      $("count").textContent = String(rows.length);
+      $("accounts").innerHTML = rows.map((a, index) => `
+        <tr data-phone="${a.phone_e164}" class="${selected && selected.phone_e164 === a.phone_e164 ? "active" : ""}">
+          <td>${index + 1}</td>
+          <td class="phone">${phone(a)}<div class="muted">switch=${a.switch_index ?? "-"}</div></td>
+          <td>${a.username ? "@" + a.username : "-"}</td>
+          <td class="hide-sm">${name(a)}</td>
+          <td><span class="pill ${statusClass(a)}">${a.status || "unknown"}</span></td>
+          <td>${a.is_banned ? '<span class="pill bad">封禁</span>' : ""} ${a.has_restrictions ? '<span class="pill warn">限制</span>' : '<span class="pill ok">正常</span>'}</td>
+        </tr>
+      `).join("");
+      Array.from($("accounts").querySelectorAll("tr")).forEach((tr) => {
+        tr.addEventListener("click", () => {
+          selected = rows.find((account) => account.phone_e164 === tr.dataset.phone) || null;
+          renderSelected();
+          renderRows();
+        });
+      });
+    }
+
+    function renderSelected() {
+      if (!selected) {
+        $("selected").textContent = "请选择左侧账号";
+        $("selected").classList.add("muted");
+        return;
+      }
+      $("selected").classList.remove("muted");
+      $("selected").innerHTML = `
+        <strong>${phone(selected)}</strong><br>
+        用户名: ${selected.username ? "@" + selected.username : "未记录"}<br>
+        姓名: ${name(selected)}<br>
+        状态: ${selected.status || "unknown"} · switch=${selected.switch_index ?? "-"}
+      `;
+      $("username").value = selected.username || "";
+      $("firstName").value = selected.first_name || "";
+      $("lastName").value = selected.last_name || "";
+    }
+
+    async function load() {
+      setBusy(true, "正在加载账号...");
+      try {
+        const data = await api("/accounts");
+        rows = data.accounts || [];
+        if (selected) selected = rows.find((a) => a.phone_e164 === selected.phone_e164) || null;
+        renderSelected();
+        renderRows();
+        $("status").textContent = `已加载 ${rows.length} 个账号`;
+        log({ loaded: rows.length });
+      } catch (err) {
+        $("status").textContent = "加载失败";
+        log(String(err.message || err));
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function run(label, path, bodyFactory) {
+      if (busy) return;
+      setBusy(true, `${label} 执行中...`);
+      try {
+        const body = typeof bodyFactory === "function" ? bodyFactory() : bodyFactory;
+        const data = await api(path, { method: "POST", body: JSON.stringify(body) });
+        log(data);
+        renderLoginRequirement(data);
+        $("status").textContent = isFailure(data) ? `${label} 失败` : `${label} 完成`;
+        await refreshQuietly();
+      } catch (err) {
+        $("status").textContent = `${label} 失败`;
+        log(String(err.message || err));
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function refreshQuietly() {
+      const data = await api("/accounts");
+      rows = data.accounts || [];
+      if (selected) selected = rows.find((a) => a.phone_e164 === selected.phone_e164) || selected;
+      renderSelected();
+      renderRows();
+    }
+
+    function openPage(page) {
+      return run(`打开 ${page}`, "/ui/api/account/open-page", () => ({ ...ref(), page }));
+    }
+
+    function readFileAsDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(reader.error || new Error("读取图片失败"));
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function setAvatar() {
+      if (busy) return;
+      setBusy(true, "设置头像执行中...");
+      try {
+        const mode = $("avatarMode").value;
+        const body = { ...ref(), mode };
+        if (mode === "custom") {
+          const file = $("avatarFile").files[0];
+          if (!file) throw new Error("自定义头像必须先选择图片");
+          body.filename = file.name;
+          body.image_base64 = await readFileAsDataUrl(file);
+        }
+        const data = await api("/ui/api/account/avatar", { method: "POST", body: JSON.stringify(body) });
+        log(data);
+        $("status").textContent = isFailure(data) ? "设置头像失败" : "设置头像完成";
+        await refreshQuietly();
+      } catch (err) {
+        $("status").textContent = "设置头像失败";
+        log(String(err.message || err));
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    $("refresh").onclick = load;
+    $("state").onclick = async () => {
+      if (busy) return;
+      setBusy(true, "读取当前页面中...");
+      try {
+        const data = await api("/state");
+        log(data);
+        renderLoginRequirement(data);
+        $("status").textContent = "读取当前页面完成";
+      } catch (err) {
+        $("status").textContent = "读取当前页面失败";
+        log(String(err.message || err));
+      } finally {
+        setBusy(false);
+      }
+    };
+    $("sync").onclick = () => run("同步 Telegram", "/ui/api/account/sync", () => ref());
+    $("switch").onclick = () => run("切换账号", "/ui/api/account/switch", () => ref());
+    $("openSettings").onclick = () => openPage("settings");
+    $("openAddAccount").onclick = () => run("打开添加账号", "/actions/add-account/open", {});
+    $("loginNext").onclick = () => run("检测登录下一步", "/actions/login/next", {});
+    $("loginStart").onclick = () => run("提交手机号", "/actions/login/start", () => ({
+      code: $("loginCode").value.trim(),
+      phone: $("loginPhone").value.trim(),
+    }));
+    $("submitNext").onclick = () => run("提交当前页面要求", "/actions/login/submit-next", () => ({
+      code: $("loginCode").value.trim(),
+      phone: $("loginPhone").value.trim(),
+      value: $("loginValue").value.trim(),
+    }));
+    $("submitCode").onclick = () => run("提交验证码", "/actions/login/submit-code", () => ({ code: $("loginCodeValue").value.trim() }));
+    $("submitPassword").onclick = () => run("提交 2FA", "/actions/login/submit-password", () => ({ password: $("loginPassword").value }));
+    $("avatar").onclick = setAvatar;
+    $("setUsername").onclick = () => run("设置用户名", "/ui/api/account/username", () => ({ ...ref(), username: $("username").value.trim() }));
+    $("setName").onclick = () => run("设置姓名", "/ui/api/account/name", () => ({ ...ref(), first_name: $("firstName").value.trim(), last_name: $("lastName").value.trim() }));
+    $("openLink").onclick = () => run("触发 deeplink", "/ui/api/account/deeplink", () => ({ ...ref(), deeplink: $("deeplink").value.trim() }));
+    $("openDevices").onclick = () => openPage("devices");
+    $("openSessions").onclick = () => openPage("sessions");
+    $("openPrivacy").onclick = () => openPage("privacy");
+    $("open2fa").onclick = () => openPage("2fa");
+    $("openLoginEmail").onclick = () => openPage("login_email");
+
+    load();
+  </script>
+</body>
+</html>
