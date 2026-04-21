@@ -5,7 +5,7 @@ set -Eeuo pipefail
 # Supported families: Alpine, Debian/Ubuntu, RHEL/CentOS Stream/Rocky/AlmaLinux
 # Run as root.
 
-SCRIPT_VERSION="2026-04-17-fixed"
+SCRIPT_VERSION="2026-04-21-telegram-x-over"
 
 # ===== Configurable defaults =====
 REDROID_IMAGE="${REDROID_IMAGE:-redroid/redroid:12.0.0_64only-latest}"
@@ -21,6 +21,8 @@ INSTALL_APPIUM="${INSTALL_APPIUM:-1}"
 START_REDROID_NOW="${START_REDROID_NOW:-1}"
 INSTALL_TELEGRAM_X_NOW="${INSTALL_TELEGRAM_X_NOW:-1}"
 START_APPIUM_NOW="${START_APPIUM_NOW:-0}"
+INSTALL_SYSTEMD_UNITS="${INSTALL_SYSTEMD_UNITS:-1}"
+CONFIGURE_AUTOMATION_NOW="${CONFIGURE_AUTOMATION_NOW:-1}"
 
 ANDROID_SDK_ROOT_DIR="${ANDROID_SDK_ROOT_DIR:-/opt/android-sdk}"
 APPIUM_LOG="${APPIUM_LOG:-/var/log/appium.log}"
@@ -286,22 +288,25 @@ EOF_APP
 setup_kernel_for_redroid() {
   log "Preparing binder / ashmem prerequisites for redroid"
 
+  mkdir -p /dev/binderfs 2>/dev/null || true
+  if ! mountpoint -q /dev/binderfs 2>/dev/null; then
+    mount -t binder binder /dev/binderfs 2>/dev/null || true
+  fi
+
   modprobe binder_linux devices="binder,hwbinder,vndbinder" 2>/dev/null || true
   modprobe ashmem_linux 2>/dev/null || true
 
   if [ -f /proc/misc ]; then
-    if grep -q '^119 vndbinder$' /proc/misc && [ ! -e /dev/vndbinder ]; then
-      mknod /dev/vndbinder c 10 119 || true
-    fi
-    if grep -q '^120 hwbinder$' /proc/misc && [ ! -e /dev/hwbinder ]; then
-      mknod /dev/hwbinder c 10 120 || true
-    fi
-    if grep -q '^121 binder$' /proc/misc && [ ! -e /dev/binder ]; then
-      mknod /dev/binder c 10 121 || true
-    fi
+    for name in binder hwbinder vndbinder ashmem; do
+      local minor
+      minor="$(awk -v n="$name" '$2 == n {print $1; exit}' /proc/misc)"
+      if [ -n "$minor" ] && [ ! -e "/dev/$name" ]; then
+        mknod "/dev/$name" c 10 "$minor" || true
+      fi
+    done
   fi
 
-  chmod 666 /dev/binder /dev/hwbinder /dev/vndbinder 2>/dev/null || true
+  chmod 666 /dev/binder /dev/hwbinder /dev/vndbinder /dev/ashmem 2>/dev/null || true
 
   if [ -d /etc/modules-load.d ]; then
     cat >/etc/modules-load.d/redroid.conf <<'EOF_MOD'
@@ -310,13 +315,40 @@ ashmem_linux
 EOF_MOD
   fi
 
-  if [ ! -e /dev/binder ]; then
-    warn "Binder device not found. redroid may fail unless your kernel already exposes binder via binderfs or modules."
+  if [ -d /etc/modules-load.d ] && [ -d /etc/modprobe.d ]; then
+    cat >/etc/modprobe.d/redroid-binder.conf <<'EOF_BINDER'
+options binder_linux devices=binder,hwbinder,vndbinder
+EOF_BINDER
+  fi
+
+  if [ ! -e /dev/binder ] || [ ! -e /dev/hwbinder ] || [ ! -e /dev/vndbinder ]; then
+    warn "One or more binder devices are missing. redroid may fail unless the kernel exposes binder devices another way."
   fi
 }
 
 write_redroid_helpers() {
-  install -d /usr/local/bin "$REDROID_DATA_DIR" "$TELEGRAM_X_DOWNLOAD_DIR"
+  install -d /usr/local/bin /usr/local/sbin "$REDROID_DATA_DIR" "$TELEGRAM_X_DOWNLOAD_DIR"
+
+  cat >/usr/local/sbin/prepare-redroid-kernel <<'EOF_PREP'
+#!/usr/bin/env bash
+set -euo pipefail
+mkdir -p /dev/binderfs 2>/dev/null || true
+if ! mountpoint -q /dev/binderfs 2>/dev/null; then
+  mount -t binder binder /dev/binderfs 2>/dev/null || true
+fi
+modprobe binder_linux devices="binder,hwbinder,vndbinder" 2>/dev/null || true
+modprobe ashmem_linux 2>/dev/null || true
+if [ -f /proc/misc ]; then
+  for name in binder hwbinder vndbinder ashmem; do
+    minor="$(awk -v n="$name" '$2 == n {print $1; exit}' /proc/misc)"
+    if [ -n "$minor" ] && [ ! -e "/dev/$name" ]; then
+      mknod "/dev/$name" c 10 "$minor" 2>/dev/null || true
+    fi
+  done
+fi
+chmod 666 /dev/binder /dev/hwbinder /dev/vndbinder /dev/ashmem 2>/dev/null || true
+EOF_PREP
+  chmod +x /usr/local/sbin/prepare-redroid-kernel
 
   cat >/usr/local/bin/start-redroid <<EOF_RED
 #!/usr/bin/env bash
@@ -326,12 +358,19 @@ REDROID_NAME="\${REDROID_NAME:-$REDROID_NAME}"
 REDROID_DATA_DIR="\${REDROID_DATA_DIR:-$REDROID_DATA_DIR}"
 REDROID_HOST_ADB_PORT="\${REDROID_HOST_ADB_PORT:-$REDROID_HOST_ADB_PORT}"
 mkdir -p "\$REDROID_DATA_DIR"
+/usr/local/sbin/prepare-redroid-kernel || true
 docker rm -f "\$REDROID_NAME" >/dev/null 2>&1 || true
+
+device_args=()
+for dev in /dev/binder /dev/hwbinder /dev/vndbinder /dev/ashmem; do
+  if [ -e "\$dev" ]; then
+    device_args+=( -v "\$dev:\$dev" )
+  fi
+done
+
 docker run -itd --rm --privileged \
   --pull always \
-  -v /dev/binder:/dev/binder \
-  -v /dev/hwbinder:/dev/hwbinder \
-  -v /dev/vndbinder:/dev/vndbinder \
+  "\${device_args[@]}" \
   -v "\$REDROID_DATA_DIR:/data" \
   -p "\$REDROID_HOST_ADB_PORT:5555" \
   --name "\$REDROID_NAME" \
@@ -348,6 +387,24 @@ adb connect "127.0.0.1:\$PORT"
 adb devices
 EOF_ADB
   chmod +x /usr/local/bin/connect-redroid-adb
+
+  cat >/usr/local/bin/fix-redroid-adb <<EOF_FIXADB
+#!/usr/bin/env bash
+set -euo pipefail
+REDROID_NAME="\${REDROID_NAME:-$REDROID_NAME}"
+PORT="\${1:-$REDROID_HOST_ADB_PORT}"
+if docker ps --format '{{.Names}}' | grep -qx "\$REDROID_NAME"; then
+  docker exec "\$REDROID_NAME" am force-stop com.hagaseca.thost9 >/dev/null 2>&1 || true
+  docker exec "\$REDROID_NAME" setprop service.adb.tcp.port 5555 >/dev/null 2>&1 || true
+  docker exec "\$REDROID_NAME" setprop ctl.restart adbd >/dev/null 2>&1 || true
+fi
+adb kill-server >/dev/null 2>&1 || true
+sleep 1
+adb start-server >/dev/null 2>&1 || true
+adb connect "127.0.0.1:\$PORT"
+adb devices
+EOF_FIXADB
+  chmod +x /usr/local/bin/fix-redroid-adb
 
   cat >/usr/local/bin/install-telegram-x <<'EOF_TGX'
 #!/usr/bin/env bash
@@ -387,6 +444,93 @@ adb connect "127.0.0.1:${REDROID_HOST_ADB_PORT}" >/dev/null 2>&1 || true
 adb -s "127.0.0.1:${REDROID_HOST_ADB_PORT}" install -r "$TELEGRAM_X_APK_PATH"
 EOF_TGX
   chmod +x /usr/local/bin/install-telegram-x
+
+  cat >/usr/local/bin/configure-redroid-automation <<EOF_AUTO
+#!/usr/bin/env bash
+set -euo pipefail
+PORT="\${1:-$REDROID_HOST_ADB_PORT}"
+SERIAL="127.0.0.1:\$PORT"
+adb start-server >/dev/null 2>&1 || true
+adb connect "\$SERIAL" >/dev/null 2>&1 || true
+for _ in \$(seq 1 60); do
+  boot="\$(adb -s "\$SERIAL" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)"
+  [ "\$boot" = "1" ] && break
+  sleep 2
+done
+
+adb -s "\$SERIAL" shell settings put global window_animation_scale 0 >/dev/null 2>&1 || true
+adb -s "\$SERIAL" shell settings put global transition_animation_scale 0 >/dev/null 2>&1 || true
+adb -s "\$SERIAL" shell settings put global animator_duration_scale 0 >/dev/null 2>&1 || true
+adb -s "\$SERIAL" shell settings put global stay_on_while_plugged_in 3 >/dev/null 2>&1 || true
+adb -s "\$SERIAL" shell settings put global hidden_api_policy 1 >/dev/null 2>&1 || true
+adb -s "\$SERIAL" shell settings put global hidden_api_policy_pre_p_apps 1 >/dev/null 2>&1 || true
+adb -s "\$SERIAL" shell settings put global hidden_api_policy_p_apps 1 >/dev/null 2>&1 || true
+
+if adb -s "\$SERIAL" shell pm list packages | grep -q 'package:io.appium.settings'; then
+  adb -s "\$SERIAL" shell pm grant io.appium.settings android.permission.WRITE_SETTINGS >/dev/null 2>&1 || true
+  adb -s "\$SERIAL" shell pm grant io.appium.settings android.permission.CHANGE_CONFIGURATION >/dev/null 2>&1 || true
+  adb -s "\$SERIAL" shell ime enable io.appium.settings/.UnicodeIME >/dev/null 2>&1 || true
+  adb -s "\$SERIAL" shell ime set io.appium.settings/.UnicodeIME >/dev/null 2>&1 || true
+else
+  echo "warning: io.appium.settings is not installed; UnicodeIME will be enabled after the first Appium UiAutomator2 session installs it" >&2
+fi
+
+adb -s "\$SERIAL" shell pm list packages | grep -E 'thunderdog|appium' || true
+adb -s "\$SERIAL" shell ime list -s || true
+EOF_AUTO
+  chmod +x /usr/local/bin/configure-redroid-automation
+
+  write_systemd_units
+}
+
+write_systemd_units() {
+  [ "$INSTALL_SYSTEMD_UNITS" = "1" ] || return 0
+  [ "$INIT_SYSTEM" = "systemd" ] || return 0
+
+  cat >/etc/systemd/system/redroid.service <<EOF_REDSVC
+[Unit]
+Description=redroid Android container
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=REDROID_IMAGE=$REDROID_IMAGE
+Environment=REDROID_NAME=$REDROID_NAME
+Environment=REDROID_DATA_DIR=$REDROID_DATA_DIR
+Environment=REDROID_HOST_ADB_PORT=$REDROID_HOST_ADB_PORT
+ExecStart=/usr/local/bin/start-redroid
+ExecStartPost=/usr/local/bin/connect-redroid-adb $REDROID_HOST_ADB_PORT
+ExecStartPost=/usr/local/bin/configure-redroid-automation $REDROID_HOST_ADB_PORT
+ExecStop=/usr/bin/docker rm -f $REDROID_NAME
+TimeoutStartSec=180
+
+[Install]
+WantedBy=multi-user.target
+EOF_REDSVC
+
+  cat >/etc/systemd/system/appium-redroid.service <<EOF_APPSVC
+[Unit]
+Description=Appium server for redroid
+After=redroid.service
+
+[Service]
+Type=simple
+Environment=ANDROID_HOME=$ANDROID_SDK_ROOT_DIR
+Environment=ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT_DIR
+Environment=APPIUM_BIND_ADDR=$APPIUM_BIND_ADDR
+Environment=APPIUM_PORT=$APPIUM_PORT
+ExecStart=/usr/bin/env appium server --address \${APPIUM_BIND_ADDR} --port \${APPIUM_PORT}
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF_APPSVC
+
+  systemctl daemon-reload || true
+  systemctl enable redroid.service >/dev/null 2>&1 || true
 }
 
 start_redroid_and_optionally_install_tgx() {
@@ -407,6 +551,11 @@ start_redroid_and_optionally_install_tgx() {
     REDROID_HOST_ADB_PORT="$REDROID_HOST_ADB_PORT" \
     /usr/local/bin/install-telegram-x || warn "Telegram X install failed; you can rerun /usr/local/bin/install-telegram-x later"
   fi
+
+  if [ "$CONFIGURE_AUTOMATION_NOW" = "1" ]; then
+    log "Configuring redroid automation settings"
+    /usr/local/bin/configure-redroid-automation "$REDROID_HOST_ADB_PORT" || warn "Automation settings configuration failed; you can rerun /usr/local/bin/configure-redroid-automation later"
+  fi
 }
 
 print_summary() {
@@ -418,8 +567,12 @@ Key paths / commands:
   Docker service:         docker
   redroid start:          /usr/local/bin/start-redroid
   redroid adb connect:    /usr/local/bin/connect-redroid-adb $REDROID_HOST_ADB_PORT
+  redroid adb repair:     /usr/local/bin/fix-redroid-adb $REDROID_HOST_ADB_PORT
+  automation configure:   /usr/local/bin/configure-redroid-automation $REDROID_HOST_ADB_PORT
   Telegram X install:     /usr/local/bin/install-telegram-x
   Appium start helper:    /usr/local/bin/start-appium-redroid
+  systemd redroid unit:   redroid.service
+  systemd Appium unit:    appium-redroid.service
   Android SDK root:       $ANDROID_SDK_ROOT_DIR
   redroid data dir:       $REDROID_DATA_DIR
   redroid adb port:       $REDROID_HOST_ADB_PORT
