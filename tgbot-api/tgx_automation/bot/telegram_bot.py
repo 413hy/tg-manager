@@ -9,6 +9,7 @@ from typing import Optional
 from urllib.error import URLError
 
 from tgx_automation.actions import login as login_actions
+from tgx_automation.actions.interstitial import handle_common_interstitials
 from tgx_automation.actions.navigation import open_add_account, recover_home, switch_account_by_index
 from tgx_automation.adb_client import AdbClient
 from tgx_automation.config import settings
@@ -221,11 +222,27 @@ def _current_login_requirement(svc: AutomationService) -> str:
     return "inspect"
 
 
+def _is_logged_in_page(page: object) -> bool:
+    return str(page) == "home_chats"
+
+
 def _visible_accounts(store: AccountStore, sender_id: Optional[int], chat_id: int) -> list[dict]:
     accounts = store.list_accounts()
     if _is_admin(sender_id):
         return accounts
     return [account for account in accounts if _is_owner(account, sender_id, chat_id)]
+
+
+def _settle_after_login(adb: AdbClient, svc: AutomationService, steps: list[str]) -> object:
+    state = svc.debug_info()
+    page = state.get("page")
+    if _is_logged_in_page(page):
+        return page
+    if str(page) == "interstitial":
+        steps.extend(handle_common_interstitials(adb))
+        time.sleep(1)
+        return svc.debug_info().get("page")
+    return page
 
 
 def _submit_code(
@@ -240,20 +257,22 @@ def _submit_code(
 ) -> None:
     steps = login_actions.submit_code(adb, code)
     time.sleep(2)
-    state = svc.debug_info()
-    page = state.get("page")
+    page = _settle_after_login(adb, svc, steps)
     phone_e164 = pending_phone.get(chat_id)
     if not phone_e164:
         _send_message(chat_id, "缺少当前登录手机号上下文。请重新发送 /add_account。")
         return
     if page == "login_password":
         pending[chat_id] = "password"
-        store.upsert_account(phone_e164=phone_e164, status="needs_password", mark_seen=True)
         _send_message(chat_id, "验证码已提交，当前需要二步验证密码。请直接发送密码。\n步骤: " + " -> ".join(steps))
         return
     if page == "login_code":
         pending[chat_id] = "code"
         _send_message(chat_id, "验证码提交后仍停留在验证码页，可能验证码错误或尚未跳转。请直接重新发送验证码。\n页面元素:\n" + _page_elements(adb))
+        return
+    if not _is_logged_in_page(page):
+        pending[chat_id] = "inspect"
+        _send_message(chat_id, f"验证码已提交，但当前页面不是已登录首页，本次不会写入数据库。当前页面: {page}\n页面元素:\n" + _page_elements(adb))
         return
 
     pending.pop(chat_id, None)
@@ -288,8 +307,7 @@ def _submit_password(
 
     steps = login_actions.submit_password(adb, password)
     time.sleep(3)
-    state = svc.debug_info()
-    page = state.get("page")
+    page = _settle_after_login(adb, svc, steps)
     phone_e164 = pending_phone.get(chat_id)
     if not phone_e164:
         _send_message(chat_id, "缺少当前登录手机号上下文。请重新发送 /add_account。")
@@ -301,6 +319,10 @@ def _submit_password(
     if page == "login_code":
         pending[chat_id] = "code"
         _send_message(chat_id, "当前回到验证码页，请直接发送验证码。\n页面元素:\n" + _page_elements(adb))
+        return
+    if not _is_logged_in_page(page):
+        pending[chat_id] = "inspect"
+        _send_message(chat_id, f"二步验证密码已提交，但当前页面不是已登录首页，本次不会写入数据库。当前页面: {page}\n页面元素:\n" + _page_elements(adb))
         return
 
     pending.pop(chat_id, None)
@@ -397,16 +419,6 @@ def run_polling() -> None:
                         "added_by_user_id": sender_id,
                         "_message": message,
                     }
-                    store.upsert_account(
-                        phone_e164=phone_e164,
-                        country=country,
-                        country_code=code,
-                        local_phone=phone,
-                        status="code_sent",
-                        added_by_chat_id=chat_id,
-                        added_by_user_id=sender_id,
-                        mark_seen=True,
-                    )
                     _send_message(
                         chat_id,
                         "手机号已提交。收到验证码后请直接发送验证码数字。\n"

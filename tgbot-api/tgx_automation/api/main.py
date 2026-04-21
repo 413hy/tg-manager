@@ -129,16 +129,6 @@ def _mark_pending_login(state: dict) -> None:
     if not pending_login_phone:
         return
     page = _page_name(state)
-    if page == "login_password":
-        store.upsert_account(
-            phone_e164=pending_login_phone,
-            status="needs_password",
-            mark_seen=True,
-            **pending_login_data,
-        )
-        return
-    if page in {"login_code", "login_email", "login_phone", "add_account", "unknown"}:
-        return
     if _login_active_page(page):
         store.upsert_account(
             phone_e164=pending_login_phone,
@@ -149,6 +139,10 @@ def _mark_pending_login(state: dict) -> None:
         )
         pending_login_phone = None
         pending_login_data = {}
+        return
+
+    if page in {"login_code", "login_email", "login_password", "login_phone", "add_account", "unknown"}:
+        return
 
 
 def _resolve_account(req: AccountRefReq) -> tuple[Optional[dict], Optional[str]]:
@@ -167,6 +161,13 @@ def _resolve_account(req: AccountRefReq) -> tuple[Optional[dict], Optional[str]]
     return account, None
 
 
+def _existing_active_account(code: str, phone: str) -> Optional[dict]:
+    account = store.get_account(AccountStore.normalize_phone(code, phone))
+    if account and account.get("status") == "active":
+        return account
+    return None
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"ok": "true"}
@@ -181,6 +182,7 @@ def ui() -> HTMLResponse:
 @app.get("/state")
 def state() -> dict:
     info = svc.debug_info()
+    _mark_pending_login(info)
     info["login_requirement"] = _login_requirement(info)
     return info
 
@@ -193,22 +195,31 @@ def list_accounts() -> dict:
 @app.post("/router/step")
 def router_step() -> dict:
     rs = svc.step_router()
+    _mark_pending_login(svc.debug_info())
     return {"page": rs.page, "actions": rs.actions, "note": rs.note}
 
 
 @app.post("/router/auto")
 def router_auto(req: AutoRouterReq) -> dict:
-    return svc.auto_router(max_steps=req.max_steps)
+    result = svc.auto_router(max_steps=req.max_steps)
+    _mark_pending_login(svc.debug_info())
+    return result
 
 
 @app.post("/actions/handle-interstitials")
 def handle_interstitials() -> dict:
-    return {"actions": handle_common_interstitials(adb)}
+    actions = handle_common_interstitials(adb)
+    current = svc.debug_info()
+    _mark_pending_login(current)
+    return {"actions": actions, "state": current, "login_requirement": _login_requirement(current)}
 
 
 @app.post("/actions/recover-home")
 def action_recover_home() -> dict:
-    return {"steps": recover_home(adb), "state": svc.debug_info()}
+    steps = recover_home(adb)
+    current = svc.debug_info()
+    _mark_pending_login(current)
+    return {"steps": steps, "state": current}
 
 
 @app.post("/actions/account/switch")
@@ -247,6 +258,15 @@ def login_start(req: LoginStartReq) -> dict:
     global pending_login_phone, pending_login_data
     steps: list[str] = []
     try:
+        existing = _existing_active_account(req.code, req.phone)
+        if existing:
+            return {
+                "account": existing,
+                "already_logged_in": True,
+                "message": "该号码已在系统中且状态为 active，不会重复进入登录流程。",
+                "available_actions": ["查看用户", "切换用户"],
+                "state": svc.debug_info(),
+            }
         state_before = svc.debug_info()
         if _state_has_error(state_before):
             return _login_error_response("ADB/页面快照不可用，已尝试自动修复，请重新点击检测或提交。", steps, state_before)
@@ -254,17 +274,22 @@ def login_start(req: LoginStartReq) -> dict:
         if requirement["required"] != "phone":
             return _login_error_response("当前页面不是手机号输入页，不能直接提交手机号。请先打开添加账号或按页面提示继续。", steps, state_before)
 
-        pending_login_phone = AccountStore.normalize_phone(req.code, req.phone)
-        pending_login_data = {"country_code": req.code, "local_phone": req.phone}
+        phone_e164 = AccountStore.normalize_phone(req.code, req.phone)
         steps.extend(login_actions.fill_phone(adb, "", req.code, req.phone))
         state_after = _login_state_after_action()
         if _state_has_error(state_after):
             return _login_error_response("手机号提交后无法读取 Telegram X 页面状态。", steps, state_after)
         if _login_still_on_same_input("phone", state_after):
+            pending_login_phone = None
+            pending_login_data = {}
             return _login_error_response("手机号提交后仍停留在手机号页面，请检查区号/号码是否被 Telegram X 接受。", steps, state_after)
+        pending_login_phone = phone_e164
+        pending_login_data = {"country_code": req.code, "local_phone": req.phone}
         _mark_pending_login(state_after)
         return {"steps": steps, "state": state_after, "login_requirement": _login_requirement(state_after)}
     except Exception as exc:
+        pending_login_phone = None
+        pending_login_data = {}
         return {"error": str(exc), "steps": steps, "state": svc.debug_info()}
 
 
@@ -278,6 +303,7 @@ def login_next() -> dict:
 def login_submit_next(req: LoginSubmitNextReq) -> dict:
     global pending_login_phone, pending_login_data
     steps: list[str] = []
+    required: Optional[str] = None
     try:
         state_before = svc.debug_info()
         if _state_has_error(state_before):
@@ -287,8 +313,17 @@ def login_submit_next(req: LoginSubmitNextReq) -> dict:
         if required == "phone":
             if not req.code or not req.phone:
                 return _login_error_response("当前页面需要 code 和 phone。", steps, state_before)
-            pending_login_phone = AccountStore.normalize_phone(req.code, req.phone)
-            pending_login_data = {"country_code": req.code, "local_phone": req.phone}
+            existing = _existing_active_account(req.code, req.phone)
+            if existing:
+                return {
+                    "account": existing,
+                    "already_logged_in": True,
+                    "message": "该号码已在系统中且状态为 active，不会重复进入登录流程。",
+                    "available_actions": ["查看用户", "切换用户"],
+                    "state": state_before,
+                    "login_requirement": requirement,
+                }
+            phone_e164 = AccountStore.normalize_phone(req.code, req.phone)
             steps.extend(login_actions.fill_phone(adb, "", req.code, req.phone))
         elif required == "code":
             if not req.value:
@@ -309,10 +344,21 @@ def login_submit_next(req: LoginSubmitNextReq) -> dict:
         if _state_has_error(state_after):
             return _login_error_response("提交后无法读取 Telegram X 页面状态。", steps, state_after)
         if required in {"phone", "code", "password", "email_or_email_code"} and _login_still_on_same_input(required, state_after):
+            if required == "phone":
+                pending_login_phone = None
+                pending_login_data = {}
             return _login_error_response("提交后仍停留在同一个输入页面，请查看页面提示；本次不会记录为登录成功。", steps, state_after)
+        if required == "phone":
+            pending_login_phone = phone_e164
+            pending_login_data = {"country_code": req.code, "local_phone": req.phone}
         _mark_pending_login(state_after)
         return {"steps": steps, "state": state_after, "login_requirement": _login_requirement(state_after)}
     except Exception as exc:
+        if required == "phone":
+            pending_login_phone = None
+            pending_login_data = {}
+        elif not pending_login_phone:
+            pending_login_data = {}
         current = svc.debug_info()
         return {"error": str(exc), "steps": steps, "state": current, "login_requirement": _login_requirement(current)}
 
