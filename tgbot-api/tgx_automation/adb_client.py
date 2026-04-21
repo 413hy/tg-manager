@@ -109,9 +109,6 @@ class AdbClient:
     def start_activity(self, activity: str) -> str:
         return self._run(["shell", "am", "start", "-n", activity])
 
-    def open_deeplink(self, url: str, package: str = "org.thunderdog.challegram") -> str:
-        return self._run(["shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", url, package])
-
     def force_stop(self, package: str = "org.thunderdog.challegram") -> str:
         return self._run(["shell", "am", "force-stop", package])
 

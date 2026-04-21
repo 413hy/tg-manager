@@ -7,6 +7,25 @@ from typing import Any, Optional
 
 
 class AccountStore:
+    PUBLIC_COLUMNS = (
+        "id",
+        "phone_e164",
+        "country",
+        "country_code",
+        "local_phone",
+        "status",
+        "is_banned",
+        "has_restrictions",
+        "restriction_note",
+        "switch_index",
+        "added_by_chat_id",
+        "added_by_user_id",
+        "created_at",
+        "updated_at",
+        "last_login_at",
+        "last_seen_at",
+    )
+
     def __init__(self, db_path: str) -> None:
         self.path = Path(db_path)
         if self.path.parent != Path("."):
@@ -18,6 +37,11 @@ class AccountStore:
         con.row_factory = sqlite3.Row
         return con
 
+    @classmethod
+    def _public_row(cls, row: sqlite3.Row) -> dict[str, Any]:
+        data = dict(row)
+        return {key: data.get(key) for key in cls.PUBLIC_COLUMNS if key in data}
+
     def init_schema(self) -> None:
         with self._connect() as con:
             con.execute(
@@ -28,9 +52,6 @@ class AccountStore:
                     country TEXT NOT NULL DEFAULT '',
                     country_code TEXT NOT NULL DEFAULT '',
                     local_phone TEXT NOT NULL DEFAULT '',
-                    username TEXT NOT NULL DEFAULT '',
-                    first_name TEXT NOT NULL DEFAULT '',
-                    last_name TEXT NOT NULL DEFAULT '',
                     status TEXT NOT NULL DEFAULT 'unknown',
                     is_banned INTEGER NOT NULL DEFAULT 0,
                     has_restrictions INTEGER NOT NULL DEFAULT 0,
@@ -75,9 +96,6 @@ class AccountStore:
         country_code: str = "",
         local_phone: str = "",
         phone_e164: Optional[str] = None,
-        username: Optional[str] = None,
-        first_name: Optional[str] = None,
-        last_name: Optional[str] = None,
         status: Optional[str] = None,
         is_banned: Optional[bool] = None,
         has_restrictions: Optional[bool] = None,
@@ -101,9 +119,6 @@ class AccountStore:
                     "country": country,
                     "country_code": country_code,
                     "local_phone": local_phone,
-                    "username": username,
-                    "first_name": first_name,
-                    "last_name": last_name,
                     "status": status,
                     "restriction_note": restriction_note,
                     "switch_index": switch_index,
@@ -133,7 +148,7 @@ class AccountStore:
                     params.append(phone)
                     con.execute(f"UPDATE accounts SET {', '.join(assignments)} WHERE phone_e164 = ?", params)
                 row = con.execute("SELECT * FROM accounts WHERE phone_e164 = ?", (phone,)).fetchone()
-                return dict(row)
+                return self._public_row(row)
 
             if switch_index is None:
                 max_index = con.execute("SELECT MAX(switch_index) FROM accounts").fetchone()[0]
@@ -142,19 +157,16 @@ class AccountStore:
             con.execute(
                 """
                 INSERT INTO accounts (
-                    phone_e164, country, country_code, local_phone, username, first_name, last_name,
+                    phone_e164, country, country_code, local_phone,
                     status, is_banned, has_restrictions, restriction_note, switch_index,
                     added_by_chat_id, added_by_user_id, last_login_at, last_seen_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     phone,
                     country,
                     country_code,
                     local_phone,
-                    username or "",
-                    first_name or "",
-                    last_name or "",
                     status or "unknown",
                     int(is_banned or False),
                     int(has_restrictions or False),
@@ -167,19 +179,19 @@ class AccountStore:
                 ),
             )
             row = con.execute("SELECT * FROM accounts WHERE phone_e164 = ?", (phone,)).fetchone()
-            return dict(row)
+            return self._public_row(row)
 
     def list_accounts(self) -> list[dict[str, Any]]:
         with self._connect() as con:
             rows = con.execute(
                 "SELECT * FROM accounts ORDER BY switch_index IS NULL, switch_index, id"
             ).fetchall()
-            return [dict(row) for row in rows]
+            return [self._public_row(row) for row in rows]
 
     def get_account(self, phone_e164: str) -> Optional[dict[str, Any]]:
         with self._connect() as con:
             row = con.execute("SELECT * FROM accounts WHERE phone_e164 = ?", (phone_e164,)).fetchone()
-            return dict(row) if row else None
+            return self._public_row(row) if row else None
 
     def delete_account(self, phone_e164: str) -> bool:
         with self._connect() as con:
@@ -188,9 +200,6 @@ class AccountStore:
 
     def update_account(self, phone_e164: str, fields: dict[str, Any]) -> Optional[dict[str, Any]]:
         allowed = {
-            "username",
-            "first_name",
-            "last_name",
             "status",
             "is_banned",
             "has_restrictions",
@@ -204,4 +213,4 @@ class AccountStore:
         with self._connect() as con:
             con.execute(f"UPDATE accounts SET {assignments} WHERE phone_e164 = ?", [*updates.values(), phone_e164])
             row = con.execute("SELECT * FROM accounts WHERE phone_e164 = ?", (phone_e164,)).fetchone()
-            return dict(row) if row else None
+            return self._public_row(row) if row else None
