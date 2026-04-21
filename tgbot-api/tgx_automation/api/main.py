@@ -116,6 +116,10 @@ def _login_still_on_same_input(required: str, state: dict) -> bool:
     return _login_requirement(state)["required"] == required
 
 
+def _is_phone_input_page(state: dict) -> bool:
+    return _login_requirement(state)["required"] == "phone"
+
+
 def _login_active_page(page: str) -> bool:
     return page in {"home_chats"}
 
@@ -224,7 +228,16 @@ def open_add_account() -> dict:
     steps: list[str] = []
     try:
         steps.extend(navigation_actions.open_add_account(adb))
-        return {"steps": steps, "state": svc.debug_info(), "login_requirement": _login_requirement()}
+        current = svc.debug_info()
+        requirement = _login_requirement(current)
+        if not _is_phone_input_page(current):
+            return {
+                "error": "打开添加账号后未进入手机号输入页；Telegram X 可能正在恢复一个未完成登录流程，请先完成或取消当前登录。",
+                "steps": steps,
+                "state": current,
+                "login_requirement": requirement,
+            }
+        return {"steps": steps, "state": current, "login_requirement": requirement}
     except Exception as exc:
         return {"error": str(exc), "steps": steps, "state": svc.debug_info()}
 

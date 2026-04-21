@@ -207,6 +207,20 @@ def _find_account(store: AccountStore, phone_or_index: str) -> Optional[dict]:
     return store.get_account(value)
 
 
+def _current_login_requirement(svc: AutomationService) -> str:
+    state = svc.debug_info()
+    page = state.get("page")
+    if page in {"add_account", "login_phone"}:
+        return "phone"
+    if page == "login_code":
+        return "code"
+    if page == "login_password":
+        return "password"
+    if page == "login_email":
+        return "email_or_email_code"
+    return "inspect"
+
+
 def _visible_accounts(store: AccountStore, sender_id: Optional[int], chat_id: int) -> list[dict]:
     accounts = store.list_accounts()
     if _is_admin(sender_id):
@@ -363,6 +377,15 @@ def run_polling() -> None:
                         continue
 
                     steps = open_add_account(adb)
+                    if _current_login_requirement(svc) != "phone":
+                        _send_message(
+                            chat_id,
+                            "打开添加账号后没有进入手机号输入页。Telegram X 可能正在恢复一个未完成登录流程，"
+                            "请先完成或取消当前登录。\n页面元素:\n" + _page_elements(adb),
+                            _remove_keyboard(),
+                        )
+                        pending.pop(chat_id, None)
+                        continue
                     steps.extend(login_actions.fill_phone(adb, country, code, phone))
                     pending[chat_id] = "code"
                     pending_phone[chat_id] = phone_e164
