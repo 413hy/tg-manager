@@ -230,6 +230,11 @@ def _login_error_response(message: str, steps: list[str], state: dict) -> dict:
     }
 
 
+def _login_still_on_same_input(required: str, state: dict) -> bool:
+    current_required = _login_requirement(state)["required"]
+    return current_required == required
+
+
 def _login_active_page(page: str) -> bool:
     return page in {"home_chats", "settings", "privacy_security", "devices", "two_fa", "login_email_settings"}
 
@@ -605,6 +610,8 @@ def login_start(req: LoginStartReq) -> dict:
         state = _login_state_after_action()
         if _state_has_error(state):
             return _login_error_response("手机号提交后无法读取 Telegram X 页面状态。", steps, state)
+        if _login_still_on_same_input("phone", state):
+            return _login_error_response("手机号提交后仍停留在手机号页面，请检查区号/号码是否被 Telegram X 接受。", steps, state)
         return {"steps": steps, "state": state, "login_requirement": _login_requirement(state)}
     except Exception as exc:
         return {"error": str(exc), "steps": steps, "state": svc.debug_info()}
@@ -659,6 +666,8 @@ def login_submit_next(req: LoginSubmitNextReq) -> dict:
         state = _login_state_after_action()
         if _state_has_error(state):
             return _login_error_response("提交后无法读取 Telegram X 页面状态。", steps, state)
+        if required in {"phone", "code", "password", "email_or_email_code"} and _login_still_on_same_input(required, state):
+            return _login_error_response("提交后仍停留在同一个输入页面，请查看页面提示；本次不会记录为登录成功。", steps, state)
         _mark_pending_login(state)
         return {"steps": steps, "state": state, "login_requirement": _login_requirement(state)}
     except Exception as exc:
@@ -680,6 +689,8 @@ def login_submit_code(req: CodeReq) -> dict:
         state = _login_state_after_action()
         if _state_has_error(state):
             return _login_error_response("验证码提交后无法读取 Telegram X 页面状态。", steps, state)
+        if _login_still_on_same_input("code", state):
+            return _login_error_response("验证码提交后仍停留在验证码页面，请检查验证码是否正确或是否已过期。", steps, state)
         _mark_pending_login(state)
         return {"steps": steps, "state": state, "login_requirement": _login_requirement(state)}
     except Exception as exc:
@@ -700,6 +711,8 @@ def login_submit_password(req: PasswordReq) -> dict:
         state = _login_state_after_action()
         if _state_has_error(state):
             return _login_error_response("2FA 密码提交后无法读取 Telegram X 页面状态。", steps, state)
+        if _login_still_on_same_input("password", state):
+            return _login_error_response("2FA 密码提交后仍停留在密码页面，请检查页面提示；本次不会记录为登录成功。", steps, state)
         _mark_pending_login(state)
         return {"steps": steps, "state": state, "login_requirement": _login_requirement(state)}
     except Exception as exc:

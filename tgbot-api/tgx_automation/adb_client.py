@@ -38,6 +38,8 @@ class AdbClient:
             marker in text
             for marker in (
                 "device offline",
+                "device '",
+                "not found",
                 "device still connecting",
                 "no devices/emulators found",
                 "cannot connect to daemon",
