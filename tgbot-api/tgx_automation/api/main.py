@@ -212,6 +212,24 @@ def _login_requirement(state: Optional[dict] = None) -> dict:
     }
 
 
+def _state_has_error(state: dict) -> bool:
+    return bool(state.get("error"))
+
+
+def _login_state_after_action(delay: float = 1.2) -> dict:
+    time.sleep(delay)
+    return svc.debug_info()
+
+
+def _login_error_response(message: str, steps: list[str], state: dict) -> dict:
+    return {
+        "error": message,
+        "steps": steps,
+        "state": state,
+        "login_requirement": _login_requirement(state),
+    }
+
+
 def _login_active_page(page: str) -> bool:
     return page in {"home_chats", "settings", "privacy_security", "devices", "two_fa", "login_email_settings"}
 
@@ -574,10 +592,19 @@ def login_start(req: LoginStartReq) -> dict:
     global pending_login_phone, pending_login_data
     steps: list[str] = []
     try:
+        state_before = svc.debug_info()
+        if _state_has_error(state_before):
+            return _login_error_response("ADB/页面快照不可用，已尝试自动修复，请重新点击检测或提交。", steps, state_before)
+        requirement = _login_requirement(state_before)
+        if requirement["required"] != "phone":
+            return _login_error_response("当前页面不是手机号输入页，不能直接提交手机号。请先打开添加账号或按页面提示继续。", steps, state_before)
+
         pending_login_phone = AccountStore.normalize_phone(req.code, req.phone)
         pending_login_data = {"country": "", "country_code": req.code, "local_phone": req.phone}
         steps.extend(login_actions.fill_phone(adb, "", req.code, req.phone))
-        state = svc.debug_info()
+        state = _login_state_after_action()
+        if _state_has_error(state):
+            return _login_error_response("手机号提交后无法读取 Telegram X 页面状态。", steps, state)
         return {"steps": steps, "state": state, "login_requirement": _login_requirement(state)}
     except Exception as exc:
         return {"error": str(exc), "steps": steps, "state": svc.debug_info()}
@@ -595,6 +622,8 @@ def login_submit_next(req: LoginSubmitNextReq) -> dict:
     steps: list[str] = []
     try:
         state_before = svc.debug_info()
+        if _state_has_error(state_before):
+            return _login_error_response("ADB/页面快照不可用，已尝试自动修复，请重新点击检测或提交。", steps, state_before)
         requirement = _login_requirement(state_before)
         required = requirement["required"]
         if required == "phone":
@@ -627,7 +656,9 @@ def login_submit_next(req: LoginSubmitNextReq) -> dict:
                 "state": state_before,
                 "login_requirement": requirement,
             }
-        state = svc.debug_info()
+        state = _login_state_after_action()
+        if _state_has_error(state):
+            return _login_error_response("提交后无法读取 Telegram X 页面状态。", steps, state)
         _mark_pending_login(state)
         return {"steps": steps, "state": state, "login_requirement": _login_requirement(state)}
     except Exception as exc:
@@ -640,8 +671,15 @@ def login_submit_code(req: CodeReq) -> dict:
     global pending_login_phone, pending_login_data
     steps: list[str] = []
     try:
+        state_before = svc.debug_info()
+        if _state_has_error(state_before):
+            return _login_error_response("ADB/页面快照不可用，已尝试自动修复，请重新点击检测或提交。", steps, state_before)
+        if _login_requirement(state_before)["required"] != "code":
+            return _login_error_response("当前页面不是验证码输入页，不能提交验证码。", steps, state_before)
         steps.extend(login_actions.submit_code(adb, req.code))
-        state = svc.debug_info()
+        state = _login_state_after_action()
+        if _state_has_error(state):
+            return _login_error_response("验证码提交后无法读取 Telegram X 页面状态。", steps, state)
         _mark_pending_login(state)
         return {"steps": steps, "state": state, "login_requirement": _login_requirement(state)}
     except Exception as exc:
@@ -653,8 +691,15 @@ def login_submit_password(req: PasswordReq) -> dict:
     global pending_login_phone, pending_login_data
     steps: list[str] = []
     try:
+        state_before = svc.debug_info()
+        if _state_has_error(state_before):
+            return _login_error_response("ADB/页面快照不可用，已尝试自动修复，请重新点击检测或提交。", steps, state_before)
+        if _login_requirement(state_before)["required"] != "password":
+            return _login_error_response("当前页面不是 2FA 密码输入页，不能提交密码。", steps, state_before)
         steps.extend(login_actions.submit_password(adb, req.password))
-        state = svc.debug_info()
+        state = _login_state_after_action()
+        if _state_has_error(state):
+            return _login_error_response("2FA 密码提交后无法读取 Telegram X 页面状态。", steps, state)
         _mark_pending_login(state)
         return {"steps": steps, "state": state, "login_requirement": _login_requirement(state)}
     except Exception as exc:

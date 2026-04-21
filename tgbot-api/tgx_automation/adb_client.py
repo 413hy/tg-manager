@@ -8,6 +8,8 @@ import base64
 from pathlib import Path
 from typing import Sequence
 
+from tgx_automation.config import settings
+
 
 class AdbClient:
     def __init__(self, serial: str) -> None:
@@ -17,10 +19,51 @@ class AdbClient:
     def _run(self, args: Sequence[str]) -> str:
         cmd = ["adb", "-s", self.serial, *args]
         with self._lock:
-            proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            proc = self._run_raw(cmd)
+            if proc.returncode != 0 and self._looks_like_offline_adb(proc):
+                self._repair_adb_transport()
+                proc = self._run_raw(cmd)
         if proc.returncode != 0:
             raise RuntimeError(f"ADB failed: {' '.join(cmd)}\n{proc.stderr}")
         return proc.stdout.strip()
+
+    @staticmethod
+    def _run_raw(cmd: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(cmd, capture_output=True, text=True, check=False)
+
+    @staticmethod
+    def _looks_like_offline_adb(proc: subprocess.CompletedProcess[str]) -> bool:
+        text = f"{proc.stdout}\n{proc.stderr}".lower()
+        return any(
+            marker in text
+            for marker in (
+                "device offline",
+                "device still connecting",
+                "no devices/emulators found",
+                "cannot connect to daemon",
+                "failed to start daemon",
+            )
+        )
+
+    def _repair_adb_transport(self) -> None:
+        if ":" not in self.serial:
+            return
+        host, port = self.serial.rsplit(":", 1)
+        if host not in {"127.0.0.1", "localhost"} or not port.isdigit():
+            return
+
+        container = settings.redroid_name
+        repair_commands = [
+            ["docker", "exec", container, "am", "force-stop", "com.hagaseca.thost9"],
+            ["docker", "exec", container, "setprop", "service.adb.tcp.port", "5555"],
+            ["docker", "exec", container, "setprop", "ctl.restart", "adbd"],
+            ["adb", "kill-server"],
+        ]
+        for command in repair_commands:
+            self._run_raw(command)
+        time.sleep(1.2)
+        self._run_raw(["adb", "start-server"])
+        self._run_raw(["adb", "connect", self.serial])
 
     def shell(self, command: str) -> str:
         return self._run(["shell", command])
