@@ -69,6 +69,7 @@ def _parse_phone(raw_phone: str) -> tuple[str, str, str]:
         "86": "China",
         "91": "India",
         "94": "Sri Lanka",
+        "234": "Nigeria",
     }
     for code in sorted(country_by_code, key=len, reverse=True):
         if digits.startswith(code):

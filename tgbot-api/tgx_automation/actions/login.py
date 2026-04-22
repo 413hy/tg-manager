@@ -13,6 +13,9 @@ def _clear_focused_field(adb: AdbClient, max_chars: int = 80) -> None:
         time.sleep(0.1)
     for _ in range(max_chars):
         adb.keyevent(67)
+    adb.keyevent(122)
+    for _ in range(max_chars):
+        adb.keyevent(112)
 
 
 def _tap_done(adb: AdbClient, fallback: tuple[int, int]) -> str:
@@ -43,6 +46,19 @@ def _resource_text(xml: str, resource: str) -> str:
     return ""
 
 
+def _digits(value: str) -> str:
+    return "".join(char for char in value if char.isdigit())
+
+
+def _input_digits(adb: AdbClient, value: str) -> None:
+    keycodes = {str(digit): 7 + digit for digit in range(10)}
+    for char in value:
+        if char not in keycodes:
+            raise ValueError(f"non-digit value is not supported in phone fields: {value}")
+        adb.keyevent(keycodes[char])
+        time.sleep(0.05)
+
+
 def click_start_messaging(adb: AdbClient) -> str:
     xml = adb.dump_ui_xml()
     node = find_node_by_text(xml, ["start messaging"])
@@ -67,25 +83,25 @@ def fill_phone(adb: AdbClient, country: str, code: str, phone: str) -> list[str]
         steps.append("skip country; Telegram X derives country from the dial code")
 
     xml = adb.dump_ui_xml()
+    steps.append(_tap_resource(adb, xml, "login_phone", (470, 396)))
+    _clear_focused_field(adb, 32)
+    steps.append("clear phone fields")
+
+    xml = adb.dump_ui_xml()
     steps.append(_tap_resource(adb, xml, "login_code", (120, 396)))
     _clear_focused_field(adb, 8)
-    adb.input_text(code)
+    _input_digits(adb, code)
     steps.append("set code")
 
-    # Telegram X renders this field as a custom view; the resource center can
-    # keep focus in login_code on some builds. This lower-left point was verified
-    # to focus app:id/login_phone on the 720x1184 redroid layout.
-    adb.tap(300, 420)
-    time.sleep(0.25)
-    steps.append("tap login_phone")
-    _clear_focused_field(adb, 32)
-    adb.input_text(phone)
+    xml = adb.dump_ui_xml()
+    steps.append(_tap_resource(adb, xml, "login_phone", (470, 396)))
+    _input_digits(adb, phone)
     steps.append("set phone")
 
     xml = adb.dump_ui_xml()
     actual_code = _resource_text(xml, "login_code")
     actual_phone = _resource_text(xml, "login_phone")
-    if code not in actual_code or phone not in actual_phone:
+    if _digits(actual_code) != code or _digits(actual_phone) != phone:
         raise RuntimeError(
             "phone input verification failed; "
             f"expected_code={code}, actual_code={actual_code or '-'}, "

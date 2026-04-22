@@ -103,6 +103,13 @@ def _login_state_after_action(delay: float = 1.2) -> dict:
     return svc.debug_info()
 
 
+def _login_state_after_phone_submit() -> dict:
+    state = _login_state_after_action(1.2)
+    if _login_still_on_same_input("phone", state):
+        state = _login_state_after_action(3.0)
+    return state
+
+
 def _login_error_response(message: str, steps: list[str], state: dict) -> dict:
     return {
         "error": message,
@@ -168,6 +175,23 @@ def _existing_active_account(code: str, phone: str) -> Optional[dict]:
     return None
 
 
+def _country_name(country_code: str) -> str:
+    return {
+        "1": "USA",
+        "7": "Russia",
+        "44": "United Kingdom",
+        "49": "Germany",
+        "60": "Malaysia",
+        "61": "Australia",
+        "65": "Singapore",
+        "81": "Japan",
+        "86": "China",
+        "91": "India",
+        "94": "Sri Lanka",
+        "234": "Nigeria",
+    }.get(country_code, "")
+
+
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"ok": "true"}
@@ -190,6 +214,27 @@ def state() -> dict:
 @app.get("/accounts")
 def list_accounts() -> dict:
     return {"accounts": store.list_accounts()}
+
+
+@app.post("/accounts/sync-telegram")
+def sync_telegram_accounts() -> dict:
+    steps, centers = navigation_actions.account_switcher_entries(adb)
+    visible_count = len(centers)
+    synced: list[dict] = []
+    missing_slots: list[int] = []
+    for index in range(visible_count):
+        account, _ = _resolve_account(AccountRefReq(index=index))
+        if account:
+            synced.append(store.upsert_account(phone_e164=account["phone_e164"], status="active", switch_index=index, mark_seen=True))
+        else:
+            missing_slots.append(index)
+    return {
+        "steps": steps,
+        "visible_accounts": visible_count,
+        "synced": synced,
+        "missing_slots": missing_slots,
+        "message": "只同步 Telegram X 抽屉中可见且数据库已知的账号；未识别槽位不会自动建库。",
+    }
 
 
 @app.post("/router/step")
@@ -276,7 +321,7 @@ def login_start(req: LoginStartReq) -> dict:
 
         phone_e164 = AccountStore.normalize_phone(req.code, req.phone)
         steps.extend(login_actions.fill_phone(adb, "", req.code, req.phone))
-        state_after = _login_state_after_action()
+        state_after = _login_state_after_phone_submit()
         if _state_has_error(state_after):
             return _login_error_response("手机号提交后无法读取 Telegram X 页面状态。", steps, state_after)
         if _login_still_on_same_input("phone", state_after):
@@ -284,7 +329,7 @@ def login_start(req: LoginStartReq) -> dict:
             pending_login_data = {}
             return _login_error_response("手机号提交后仍停留在手机号页面，请检查区号/号码是否被 Telegram X 接受。", steps, state_after)
         pending_login_phone = phone_e164
-        pending_login_data = {"country_code": req.code, "local_phone": req.phone}
+        pending_login_data = {"country": _country_name(req.code), "country_code": req.code, "local_phone": req.phone}
         _mark_pending_login(state_after)
         return {"steps": steps, "state": state_after, "login_requirement": _login_requirement(state_after)}
     except Exception as exc:
@@ -340,7 +385,7 @@ def login_submit_next(req: LoginSubmitNextReq) -> dict:
         else:
             return _login_error_response("当前页面未识别为可提交的登录输入页。", steps, state_before)
 
-        state_after = _login_state_after_action()
+        state_after = _login_state_after_phone_submit() if required == "phone" else _login_state_after_action()
         if _state_has_error(state_after):
             return _login_error_response("提交后无法读取 Telegram X 页面状态。", steps, state_after)
         if required in {"phone", "code", "password", "email_or_email_code"} and _login_still_on_same_input(required, state_after):
@@ -350,7 +395,7 @@ def login_submit_next(req: LoginSubmitNextReq) -> dict:
             return _login_error_response("提交后仍停留在同一个输入页面，请查看页面提示；本次不会记录为登录成功。", steps, state_after)
         if required == "phone":
             pending_login_phone = phone_e164
-            pending_login_data = {"country_code": req.code, "local_phone": req.phone}
+            pending_login_data = {"country": _country_name(req.code), "country_code": req.code, "local_phone": req.phone}
         _mark_pending_login(state_after)
         return {"steps": steps, "state": state_after, "login_requirement": _login_requirement(state_after)}
     except Exception as exc:

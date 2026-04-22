@@ -184,6 +184,7 @@
     </div>
     <div class="toolbar">
       <button id="refresh" class="primary">刷新账号</button>
+      <button id="syncTelegram">同步 Telegram X</button>
       <button id="state">读取当前页面</button>
     </div>
   </header>
@@ -283,6 +284,13 @@
     const phone = (a) => a.country_code && a.local_phone ? `+${a.country_code} ${a.local_phone}` : a.phone_e164;
     const statusClass = (a) => a.status === "active" ? "ok" : a.status === "code_sent" || a.status === "needs_password" ? "warn" : "";
     const isFailure = (data) => Boolean(data && data.error);
+    const requirementLabel = {
+      phone: "等待手机号",
+      code: "等待验证码",
+      password: "等待 2FA",
+      email_or_email_code: "等待邮箱",
+      inspect: "需要检查页面",
+    };
 
     function setBusy(value, message) {
       busy = value;
@@ -300,7 +308,17 @@
     function renderLoginRequirement(data) {
       const req = data && (data.login_requirement || (data.state && data.state.login_requirement));
       if (!req) return;
-      $("loginHint").textContent = `${req.message} required=${req.required}; fields=${(req.fields || []).join(", ") || "-"}`;
+      $("loginHint").textContent = `${requirementLabel[req.required] || req.required}: ${req.message} fields=${(req.fields || []).join(", ") || "-"}`;
+    }
+
+    function describeOutcome(label, data) {
+      if (isFailure(data)) return `${label} 失败: ${data.error}`;
+      if (data.already_logged_in) return `${label} 完成: 账号已登录`;
+      const req = data && (data.login_requirement || (data.state && data.state.login_requirement));
+      if (req && req.required && req.required !== "inspect") return `${label} 完成: ${requirementLabel[req.required] || req.required}`;
+      const page = data && data.state && data.state.page;
+      if (page === "home_chats") return `${label} 完成: 已进入首页`;
+      return `${label} 完成`;
     }
 
     function ref() {
@@ -389,7 +407,7 @@
         const data = await api(path, { method: "POST", body: JSON.stringify(body) });
         log(data);
         renderLoginRequirement(data);
-        $("status").textContent = isFailure(data) ? `${label} 失败` : `${label} 完成`;
+        $("status").textContent = describeOutcome(label, data);
         await refreshQuietly();
       } catch (err) {
         $("status").textContent = `${label} 失败`;
@@ -400,6 +418,7 @@
     }
 
     $("refresh").onclick = load;
+    $("syncTelegram").onclick = () => run("同步 Telegram X", "/accounts/sync-telegram", {});
     $("state").onclick = async () => {
       if (busy) return;
       setBusy(true, "读取当前页面中...");
