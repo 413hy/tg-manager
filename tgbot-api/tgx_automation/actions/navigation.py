@@ -16,6 +16,7 @@ def recover_home(adb: AdbClient) -> list[str]:
     steps.append("force-stop")
     adb.start_activity("org.thunderdog.challegram/.MainActivity")
     steps.append("start-main")
+    time.sleep(1.2)
     return steps
 
 

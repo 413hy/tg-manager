@@ -26,8 +26,8 @@ def check_spambot_status(adb: AdbClient, work_dir: Path) -> dict:
     steps.extend(_confirm_status_prompt(adb))
     screenshot = work_dir / "spambot-status.png"
     adb.screenshot(screenshot)
-    text, scan_steps = _collect_status_text(adb, work_dir, screenshot)
-    steps.extend(scan_steps)
+    text = _ocr(screenshot)
+    steps.append("ocr current SpamBot response")
     result = _classify_spambot_text(text)
     result["steps"] = steps
     result["ocr_text"] = text
@@ -75,17 +75,30 @@ def _open_spambot(adb: AdbClient, work_dir: Path) -> list[str]:
 def _send_start(adb: AdbClient) -> list[str]:
     xml = adb.dump_ui_xml()
     input_node = find_node_by_resource(xml, ["msg_input"])
-    if not input_node or "/start" not in input_node.text:
-        if input_node and input_node.center:
-            adb.tap(*input_node.center)
-        else:
-            adb.tap(260, 1135)
-        time.sleep(0.2)
-        adb.input_text("/start")
+    if input_node and input_node.center:
+        adb.tap(*input_node.center)
+    else:
+        adb.tap(260, 1135)
+    time.sleep(0.2)
+    _clear_message_input(adb)
+    if _message_input_text(adb).strip():
+        raise RuntimeError("failed to clear SpamBot message input before /start")
+    adb.input_text("/start")
+    if _message_input_text(adb).strip() != "/start":
+        raise RuntimeError("failed to prepare exact /start command for SpamBot")
     time.sleep(0.2)
     _tap_send(adb)
+    if _input_has_start(adb):
+        raise RuntimeError("failed to send exact /start command to SpamBot")
     time.sleep(4)
-    return ["send /start to SpamBot"]
+    return ["clear input and send exact /start to SpamBot"]
+
+
+def _clear_message_input(adb: AdbClient) -> None:
+    if not _message_input_text(adb).strip():
+        return
+    adb.keyevent(123)
+    adb.shell("i=0; while [ $i -lt 80 ]; do input keyevent 67; i=$((i+1)); done")
 
 
 def _tap_send(adb: AdbClient) -> None:
@@ -98,8 +111,12 @@ def _tap_send(adb: AdbClient) -> None:
 
 
 def _input_has_start(adb: AdbClient) -> bool:
+    return "/start" in _message_input_text(adb)
+
+
+def _message_input_text(adb: AdbClient) -> str:
     input_node = find_node_by_resource(adb.dump_ui_xml(), ["msg_input"])
-    return bool(input_node and "/start" in input_node.text)
+    return input_node.text if input_node else ""
 
 
 def _confirm_status_prompt(adb: AdbClient) -> list[str]:
@@ -110,22 +127,6 @@ def _confirm_status_prompt(adb: AdbClient) -> list[str]:
             time.sleep(5)
             return ["confirm SpamBot status check"]
     return []
-
-
-def _collect_status_text(adb: AdbClient, work_dir: Path, first_screenshot: Path) -> tuple[str, list[str]]:
-    texts = [_ocr(first_screenshot)]
-    steps: list[str] = []
-    for index in range(1, 21):
-        result = _classify_spambot_text("\n".join(texts))
-        if result["status_result"] != "unknown":
-            break
-        adb.shell("input swipe 360 420 360 900 600")
-        time.sleep(0.8)
-        screenshot = work_dir / f"spambot-status-history-{index}.png"
-        adb.screenshot(screenshot)
-        texts.append(_ocr(screenshot))
-        steps.append(f"scan SpamBot history {index}")
-    return "\n".join(texts), steps
 
 
 def _open_search(adb: AdbClient) -> None:
@@ -169,7 +170,11 @@ def _search_result_centers(adb: AdbClient) -> list[tuple[int, int]]:
     for node in parse_nodes(xml):
         if not node.center:
             continue
-        if node.resource_id.endswith(":id/search_chat_local") or node.resource_id.endswith(":id/search_chat_global"):
+        if (
+            node.resource_id.endswith(":id/search_chat_local")
+            or node.resource_id.endswith(":id/search_chat_global")
+            or node.resource_id.endswith(":id/chat")
+        ):
             centers.append(node.center)
     if centers:
         return sorted(set(centers), key=lambda center: center[1])[:6]
@@ -253,66 +258,62 @@ def _ocr(path: Path) -> str:
 
 
 def _classify_spambot_text(text: str) -> dict:
-    normalized = re.sub(r"\s+", " ", text.lower())
-    denied_markers = [
-        "appeal has been denied",
-        "restrictions have not been lifted",
-        "not been lifted",
-        "has been denied",
-        "account was blocked",
-        "was blocked",
-        "blocked by mistake",
-        "blocked for violations",
-        "submit a complaint",
-        "would you like to submit a complaint",
-        "telegram terms of service",
-        "user reports confirmed",
-        "confirmed by our moderators",
-    ]
-    restricted_markers = [
-        "account is limited",
-        "your account is limited",
-        "your account has been limited",
-        "your account is restricted",
-        "your account has restrictions",
-        "some account functionality is limited",
-        "cannot send",
-        "can't send",
-        "can not send",
-        "only send messages to mutual contacts",
-    ]
-    normal_markers = [
-        "no limits",
-        "no restrictions",
-        "free as a bird",
-        "good news",
-        "your account is free",
-    ]
+    normalized = _normalize_spambot_text(text)
 
-    if any(marker in normalized for marker in denied_markers):
+    if _contains_all(
+        normalized,
+        (
+            "your account was blocked for violations of the telegram terms of service",
+            "based on user reports confirmed by our moderators",
+        ),
+    ):
         return {
             "is_banned": True,
             "has_restrictions": True,
-            "restriction_note": "SpamBot: appeal denied; restrictions not lifted",
+            "restriction_note": "SpamBot: account blocked for Terms of Service violations",
             "status_result": "banned",
         }
-    if any(marker in normalized for marker in restricted_markers):
+    if _contains_all(
+        normalized,
+        (
+            "unfortunately some phone numbers may trigger a harsh response from our anti spam systems",
+            "submit a complaint to our moderators",
+            "telegram premium",
+            "less strict limits",
+        ),
+    ):
         return {
             "is_banned": False,
             "has_restrictions": True,
-            "restriction_note": "SpamBot: restrictions detected",
+            "restriction_note": "SpamBot: phone number triggered anti-spam limits",
             "status_result": "restricted",
         }
-    if any(marker in normalized for marker in normal_markers):
+    if _contains_all(
+        normalized,
+        (
+            "good news no limits are currently applied to your account",
+            "youre free as a",
+        ),
+    ) and ("bird" in normalized or "ird" in normalized):
         return {
             "is_banned": False,
             "has_restrictions": False,
-            "restriction_note": "SpamBot: no restrictions detected",
+            "restriction_note": "SpamBot: no limits are currently applied",
             "status_result": "normal",
         }
     return {
         "is_banned": False,
         "has_restrictions": False,
-        "restriction_note": "SpamBot result could not be classified automatically",
+        "restriction_note": "SpamBot query failed: unrecognized response",
         "status_result": "unknown",
     }
+
+
+def _normalize_spambot_text(text: str) -> str:
+    normalized = text.lower().replace("’", "").replace("'", "")
+    normalized = re.sub(r"[^a-z0-9]+", " ", normalized)
+    return re.sub(r"\s+", " ", normalized).strip()
+
+
+def _contains_all(text: str, fragments: tuple[str, ...]) -> bool:
+    return all(fragment in text for fragment in fragments)

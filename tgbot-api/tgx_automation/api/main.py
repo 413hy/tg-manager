@@ -267,18 +267,6 @@ def check_account_status(req: AccountRefReq) -> dict:
         updated = store.upsert_account(phone_e164=account["phone_e164"], mark_seen=True)
         return {"account": updated, "result": result, "steps": steps + result["steps"], "state": svc.debug_info()}
 
-    current_is_banned = bool(account.get("is_banned"))
-    current_has_restrictions = bool(account.get("has_restrictions"))
-    if current_is_banned and result_status != "banned":
-        result["is_banned"] = True
-        result["has_restrictions"] = True
-        result["restriction_note"] = f"{result['restriction_note']} (kept previous banned state)"
-        result["status_result"] = "banned"
-    elif current_has_restrictions and result_status == "normal":
-        result["has_restrictions"] = True
-        result["restriction_note"] = f"{result['restriction_note']} (kept previous restricted state)"
-        result["status_result"] = "restricted"
-
     account_status = "banned" if result["is_banned"] else "limited" if result["has_restrictions"] else "active"
     updated = store.upsert_account(
         phone_e164=account["phone_e164"],

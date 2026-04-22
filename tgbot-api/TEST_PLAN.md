@@ -28,9 +28,14 @@ Out of scope for this stage:
 4. Country is not a user input; country display derives from country code.
 5. Every account-specific operation must switch to the target `switch_index` first.
 6. Database account status must come from Telegram X / Spam Info Bot, not manual marking.
-7. `unknown` SpamBot OCR results must not downgrade or overwrite an existing known status.
-8. A stricter status must not be downgraded by a later weaker result.
-9. Frontend operations must use the same API endpoints as direct API tests.
+7. SpamBot status checks must clear the message box and send exactly `/start`; `//start` or stale input is a test failure.
+8. SpamBot status must be derived from the current bot response only, not historical chat messages.
+9. The only accepted SpamBot classifications are:
+   - Normal: `Good news, no limits are currently applied to your account. You’re free as a bird!`
+   - Banned: `Your account was blocked for violations of the Telegram Terms of Service based on user reports confirmed by our moderators.`
+   - Limited: `Unfortunately, some phone numbers may trigger a harsh response from our anti-spam systems. If you think this is the case with you, you can submit a complaint to our moderators or subscribe to Telegram Premium to get less strict limits.`
+10. Any other SpamBot output is query failed and must not overwrite an existing known status.
+11. Frontend operations must use the same API endpoints as direct API tests.
 
 ## API Test Cases
 
@@ -44,7 +49,7 @@ Out of scope for this stage:
 | T06 | `POST /accounts/sync-telegram` | Sync visible Telegram X slots to known DB accounts | Returns visible count, synced known accounts, missing slots |
 | T07 | `POST /actions/account/switch` | Switch by stored phone/index | Returns target account and state; updates last seen |
 | T08 | `POST /actions/account/check-status` normal account | Switch target, open Spam Info Bot, classify normal | Writes `status=active`, `is_banned=0`, `has_restrictions=0` |
-| T09 | `POST /actions/account/check-status` banned account | Switch target, scan SpamBot history, classify banned | Writes `status=banned`, `is_banned=1`, `has_restrictions=1` |
+| T09 | `POST /actions/account/check-status` banned account | Switch target, send exact `/start`, classify current SpamBot response | Writes `status=banned`, `is_banned=1`, `has_restrictions=1` only when the exact blocked response is returned |
 | T10 | `POST /actions/add-account/open` | Enter add-account flow | Returns phone login requirement or a clear recoverable error |
 | T11 | `POST /actions/login/next` | Inspect current login requirement | Returns page-driven `login_requirement` |
 | T12 | `POST /actions/login/start` for existing active account | Prevent duplicate login flow | Returns `already_logged_in=true` and existing account |
@@ -63,7 +68,7 @@ Out of scope for this stage:
 | F02 | `add-account/open -> login/next` | Login form state is reported through `login_requirement` |
 | F03 | existing active `login/start` | Does not open or overwrite a login flow |
 | F04 | failed/invalid submit | Does not insert new DB account |
-| F05 | repeated status checks | Banned accounts remain banned; unknown OCR does not overwrite known status |
+| F05 | repeated status checks | Current exact SpamBot response wins; unknown/unrecognized OCR does not overwrite known status |
 
 ## Telegram Bot Test Coverage
 
@@ -118,6 +123,21 @@ Final account state after the run:
 | --- | --- | --- |
 | `+94778807109` | Normal active account | `status=active`, `is_banned=0`, `has_restrictions=0` |
 | `+13149862659` | Banned account | `status=banned`, `is_banned=1`, `has_restrictions=1` |
+
+### 2026-04-22 SpamBot Fix Retest
+
+Regression found:
+
+- The message box could retain a stale slash and send `//start`.
+- Status classification scanned older SpamBot history and used broad keyword matching.
+
+Fix validated:
+
+- `POST /actions/account/check-status` clears the input and sends exact `/start`.
+- The API no longer swipes or scans SpamBot history.
+- `+94778807109` returned `status_result=normal` from the current SpamBot reply and wrote `status=active`.
+- `+13149862659` returned `status_result=banned` from the current SpamBot reply and wrote `status=banned`.
+- OCR text from the retest did not contain `//start`; `/start` may appear as `Istart` due OCR, but the sent command was verified before tapping send.
 | `+2349158725636` | Banned account | `status=banned`, `is_banned=1`, `has_restrictions=1` |
 
 Fresh new-number login was not completed in this run because it requires a new external phone verification code. The login write-path was validated by the already-logged-in guard and invalid-submit guard: failed/invalid login submissions did not create new database rows.
