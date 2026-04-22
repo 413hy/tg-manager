@@ -55,6 +55,12 @@ class AccountRefReq(BaseModel):
     index: Optional[int] = None
 
 
+class AccountStatusReq(AccountRefReq):
+    is_banned: bool = False
+    has_restrictions: bool = False
+    restriction_note: str = ""
+
+
 def _page_name(state: dict) -> str:
     page_obj = state.get("page", "unknown")
     return getattr(page_obj, "value", str(page_obj))
@@ -235,6 +241,22 @@ def sync_telegram_accounts() -> dict:
         "missing_slots": missing_slots,
         "message": "只同步 Telegram X 抽屉中可见且数据库已知的账号；未识别槽位不会自动建库。",
     }
+
+
+@app.post("/actions/account/status")
+def update_account_status(req: AccountStatusReq) -> dict:
+    account, error = _resolve_account(req)
+    if error:
+        return {"error": error}
+    updated = store.upsert_account(
+        phone_e164=account["phone_e164"],
+        status=account.get("status") or "active",
+        is_banned=req.is_banned,
+        has_restrictions=req.has_restrictions,
+        restriction_note=req.restriction_note,
+        mark_status_checked=True,
+    )
+    return {"account": updated}
 
 
 @app.post("/router/step")

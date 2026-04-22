@@ -230,6 +230,8 @@
           <div class="button-row">
             <button id="switch">切换账号</button>
             <button id="recover">恢复主页</button>
+            <button id="markBanned">标记封禁</button>
+            <button id="markNormal">标记正常</button>
           </div>
         </div>
       </section>
@@ -283,6 +285,12 @@
     const buttons = () => Array.from(document.querySelectorAll("button"));
     const phone = (a) => a.country_code && a.local_phone ? `+${a.country_code} ${a.local_phone}` : a.phone_e164;
     const statusClass = (a) => a.status === "active" ? "ok" : a.status === "code_sent" || a.status === "needs_password" ? "warn" : "";
+    const restrictionState = (a) => {
+      if (a.is_banned) return { text: "封禁", cls: "bad" };
+      if (a.has_restrictions) return { text: "限制", cls: "warn" };
+      if (!a.status_checked_at) return { text: "未检测", cls: "warn" };
+      return { text: "正常", cls: "ok" };
+    };
     const isFailure = (data) => Boolean(data && data.error);
     const requirementLabel = {
       phone: "等待手机号",
@@ -345,13 +353,18 @@
     function renderRows() {
       $("count").textContent = String(rows.length);
       $("accounts").innerHTML = rows.map((a, index) => `
+        ${(() => {
+          const restriction = restrictionState(a);
+          return `
         <tr data-phone="${a.phone_e164}" class="${selected && selected.phone_e164 === a.phone_e164 ? "active" : ""}">
           <td>${index + 1}</td>
           <td class="phone">${phone(a)}<div class="muted">switch=${a.switch_index ?? "-"}</div></td>
           <td><span class="pill ${statusClass(a)}">${a.status || "unknown"}</span></td>
-          <td>${a.is_banned ? '<span class="pill bad">封禁</span>' : ""} ${a.has_restrictions ? '<span class="pill warn">限制</span>' : '<span class="pill ok">正常</span>'}</td>
+          <td><span class="pill ${restriction.cls}">${restriction.text}</span></td>
           <td class="hide-sm">${a.last_login_at || "-"}</td>
         </tr>
+          `;
+        })()}
       `).join("");
       Array.from($("accounts").querySelectorAll("tr")).forEach((tr) => {
         tr.addEventListener("click", () => {
@@ -372,7 +385,8 @@
       $("selected").innerHTML = `
         <strong>${phone(selected)}</strong><br>
         状态: ${selected.status || "unknown"}<br>
-        限制: ${selected.has_restrictions ? "是" : "否"} · 封禁: ${selected.is_banned ? "是" : "否"}<br>
+        检测: ${restrictionState(selected).text} · 最近检测: ${selected.status_checked_at || "-"}<br>
+        说明: ${selected.restriction_note || "-"}<br>
         switch=${selected.switch_index ?? "-"} · 最近登录: ${selected.last_login_at || "-"}
       `;
     }
@@ -436,6 +450,18 @@
     };
     $("switch").onclick = () => run("切换账号", "/actions/account/switch", () => ref());
     $("recover").onclick = () => run("恢复主页", "/actions/recover-home", {});
+    $("markBanned").onclick = () => run("标记封禁", "/actions/account/status", () => ({
+      ...ref(),
+      is_banned: true,
+      has_restrictions: true,
+      restriction_note: "管理员确认账号已封禁",
+    }));
+    $("markNormal").onclick = () => run("标记正常", "/actions/account/status", () => ({
+      ...ref(),
+      is_banned: false,
+      has_restrictions: false,
+      restriction_note: "管理员确认账号可用",
+    }));
     $("openAddAccount").onclick = () => run("打开添加账号", "/actions/add-account/open", {});
     $("loginNext").onclick = () => run("检测登录下一步", "/actions/login/next", {});
     $("loginStart").onclick = () => run("提交手机号", "/actions/login/start", () => ({

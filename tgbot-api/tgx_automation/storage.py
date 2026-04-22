@@ -17,6 +17,7 @@ class AccountStore:
         "is_banned",
         "has_restrictions",
         "restriction_note",
+        "status_checked_at",
         "switch_index",
         "added_by_chat_id",
         "added_by_user_id",
@@ -56,6 +57,7 @@ class AccountStore:
                     is_banned INTEGER NOT NULL DEFAULT 0,
                     has_restrictions INTEGER NOT NULL DEFAULT 0,
                     restriction_note TEXT NOT NULL DEFAULT '',
+                    status_checked_at TEXT,
                     switch_index INTEGER,
                     added_by_chat_id INTEGER,
                     added_by_user_id INTEGER,
@@ -68,6 +70,7 @@ class AccountStore:
             )
             con.execute("CREATE INDEX IF NOT EXISTS idx_accounts_status ON accounts(status)")
             con.execute("CREATE INDEX IF NOT EXISTS idx_accounts_switch_index ON accounts(switch_index)")
+            self._ensure_column(con, "accounts", "status_checked_at", "TEXT")
             con.execute(
                 """
                 CREATE TRIGGER IF NOT EXISTS trg_accounts_updated_at
@@ -78,6 +81,12 @@ class AccountStore:
                 END
                 """
             )
+
+    @staticmethod
+    def _ensure_column(con: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+        columns = {row[1] for row in con.execute(f"PRAGMA table_info({table})").fetchall()}
+        if column not in columns:
+            con.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
     @staticmethod
     def normalize_phone(country_code: str, local_phone: str) -> str:
@@ -105,6 +114,7 @@ class AccountStore:
         added_by_user_id: Optional[int] = None,
         mark_login: bool = False,
         mark_seen: bool = False,
+        mark_status_checked: bool = False,
     ) -> dict[str, Any]:
         phone = phone_e164 or self.normalize_phone(country_code, local_phone)
         if not phone:
@@ -135,6 +145,8 @@ class AccountStore:
                     updates["last_login_at"] = "CURRENT_TIMESTAMP"
                 if mark_seen:
                     updates["last_seen_at"] = "CURRENT_TIMESTAMP"
+                if mark_status_checked:
+                    updates["status_checked_at"] = "CURRENT_TIMESTAMP"
 
                 if updates:
                     assignments = []
@@ -158,9 +170,9 @@ class AccountStore:
                 """
                 INSERT INTO accounts (
                     phone_e164, country, country_code, local_phone,
-                    status, is_banned, has_restrictions, restriction_note, switch_index,
+                    status, is_banned, has_restrictions, restriction_note, status_checked_at, switch_index,
                     added_by_chat_id, added_by_user_id, last_login_at, last_seen_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     phone,
@@ -171,6 +183,7 @@ class AccountStore:
                     int(is_banned or False),
                     int(has_restrictions or False),
                     restriction_note or "",
+                    self._now() if mark_status_checked else None,
                     switch_index,
                     added_by_chat_id,
                     added_by_user_id,
@@ -204,6 +217,7 @@ class AccountStore:
             "is_banned",
             "has_restrictions",
             "restriction_note",
+            "status_checked_at",
             "switch_index",
         }
         updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
