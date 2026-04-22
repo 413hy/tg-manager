@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tempfile
 import time
 from pathlib import Path
 from typing import Optional
@@ -12,6 +13,7 @@ from tgx_automation.actions import login as login_actions
 from tgx_automation.actions import navigation as navigation_actions
 from tgx_automation.actions.interstitial import handle_common_interstitials
 from tgx_automation.actions.navigation import recover_home
+from tgx_automation.actions.status_check import check_spambot_status
 from tgx_automation.adb_client import AdbClient
 from tgx_automation.config import settings
 from tgx_automation.service import AutomationService
@@ -53,12 +55,6 @@ class AccountRefReq(BaseModel):
     phone_e164: Optional[str] = None
     phone: Optional[str] = None
     index: Optional[int] = None
-
-
-class AccountStatusReq(AccountRefReq):
-    is_banned: bool = False
-    has_restrictions: bool = False
-    restriction_note: str = ""
 
 
 def _page_name(state: dict) -> str:
@@ -243,20 +239,32 @@ def sync_telegram_accounts() -> dict:
     }
 
 
-@app.post("/actions/account/status")
-def update_account_status(req: AccountStatusReq) -> dict:
+@app.post("/actions/account/check-status")
+def check_account_status(req: AccountRefReq) -> dict:
     account, error = _resolve_account(req)
     if error:
         return {"error": error}
+    if account.get("switch_index") is None:
+        return {"error": "account has no switch_index; cannot select it in Telegram X"}
+
+    steps = navigation_actions.switch_account_by_index(adb, int(account["switch_index"]))
+    store.upsert_account(phone_e164=account["phone_e164"], mark_seen=True)
+    try:
+        with tempfile.TemporaryDirectory(prefix="tgx-status-") as tmp:
+            result = check_spambot_status(adb, Path(tmp))
+    except Exception as exc:
+        return {"error": str(exc), "steps": steps, "state": svc.debug_info()}
+    account_status = "banned" if result["is_banned"] else "limited" if result["has_restrictions"] else "active"
     updated = store.upsert_account(
         phone_e164=account["phone_e164"],
-        status=account.get("status") or "active",
-        is_banned=req.is_banned,
-        has_restrictions=req.has_restrictions,
-        restriction_note=req.restriction_note,
+        status=account_status,
+        is_banned=result["is_banned"],
+        has_restrictions=result["has_restrictions"],
+        restriction_note=result["restriction_note"],
         mark_status_checked=True,
+        mark_seen=True,
     )
-    return {"account": updated}
+    return {"account": updated, "result": result, "steps": steps + result["steps"], "state": svc.debug_info()}
 
 
 @app.post("/router/step")

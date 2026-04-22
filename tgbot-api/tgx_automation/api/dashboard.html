@@ -229,9 +229,8 @@
           <div id="selected" class="selected muted">请选择左侧账号</div>
           <div class="button-row">
             <button id="switch">切换账号</button>
+            <button id="checkStatus" class="primary">自动检测</button>
             <button id="recover">恢复主页</button>
-            <button id="markBanned">标记封禁</button>
-            <button id="markNormal">标记正常</button>
           </div>
         </div>
       </section>
@@ -321,6 +320,7 @@
 
     function describeOutcome(label, data) {
       if (isFailure(data)) return `${label} 失败: ${data.error}`;
+      if (data.result && data.result.status_result) return `${label} 完成: ${data.result.status_result}`;
       if (data.already_logged_in) return `${label} 完成: 账号已登录`;
       const req = data && (data.login_requirement || (data.state && data.state.login_requirement));
       if (req && req.required && req.required !== "inspect") return `${label} 完成: ${requirementLabel[req.required] || req.required}`;
@@ -449,19 +449,8 @@
       }
     };
     $("switch").onclick = () => run("切换账号", "/actions/account/switch", () => ref());
+    $("checkStatus").onclick = () => run("自动检测状态", "/actions/account/check-status", () => ref());
     $("recover").onclick = () => run("恢复主页", "/actions/recover-home", {});
-    $("markBanned").onclick = () => run("标记封禁", "/actions/account/status", () => ({
-      ...ref(),
-      is_banned: true,
-      has_restrictions: true,
-      restriction_note: "管理员确认账号已封禁",
-    }));
-    $("markNormal").onclick = () => run("标记正常", "/actions/account/status", () => ({
-      ...ref(),
-      is_banned: false,
-      has_restrictions: false,
-      restriction_note: "管理员确认账号可用",
-    }));
     $("openAddAccount").onclick = () => run("打开添加账号", "/actions/add-account/open", {});
     $("loginNext").onclick = () => run("检测登录下一步", "/actions/login/next", {});
     $("loginStart").onclick = () => run("提交手机号", "/actions/login/start", () => ({
