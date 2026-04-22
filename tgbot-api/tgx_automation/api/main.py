@@ -227,7 +227,13 @@ def sync_telegram_accounts() -> dict:
     for index in range(visible_count):
         account, _ = _resolve_account(AccountRefReq(index=index))
         if account:
-            synced.append(store.upsert_account(phone_e164=account["phone_e164"], status="active", switch_index=index, mark_seen=True))
+            if account.get("is_banned"):
+                status = "banned"
+            elif account.get("has_restrictions"):
+                status = "limited"
+            else:
+                status = "active"
+            synced.append(store.upsert_account(phone_e164=account["phone_e164"], status=status, switch_index=index, mark_seen=True))
         else:
             missing_slots.append(index)
     return {
