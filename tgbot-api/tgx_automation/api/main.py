@@ -253,7 +253,10 @@ def check_account_status(req: AccountRefReq) -> dict:
     if account.get("switch_index") is None:
         return {"error": "account has no switch_index; cannot select it in Telegram X"}
 
-    steps = navigation_actions.switch_account_by_index(adb, int(account["switch_index"]))
+    try:
+        steps = navigation_actions.switch_account_by_index(adb, int(account["switch_index"]))
+    except Exception as exc:
+        return {"error": f"failed to switch account before status check: {exc}", "account": account, "state": svc.debug_info()}
     store.upsert_account(phone_e164=account["phone_e164"], mark_seen=True)
     try:
         with tempfile.TemporaryDirectory(prefix="tgx-status-") as tmp:

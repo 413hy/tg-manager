@@ -156,6 +156,26 @@ Fix validated:
 
 Fresh new-number login was not completed in this run because it requires a new external phone verification code. The login write-path was validated by the already-logged-in guard and invalid-submit guard: failed/invalid login submissions did not create new database rows.
 
+### 2026-04-23 Status Check Hardening Retest
+
+Regressions found after frontend retesting:
+
+- Account switching could raise an uncaught `ValueError` when Telegram X did not expose account entries, producing a frontend error instead of a structured API response.
+- Opening SpamBot can trigger Android's older-app compatibility dialog after deeplink/search-result taps.
+- The generic interstitial handler was too broad and could click Telegram X's normal top-right search close button.
+- ADB screenshots can occasionally be truncated, causing Tesseract to fail with `truncated file`.
+- Telegram X search XML includes hidden search result nodes at `[0,0][0,0]`; those must not be clicked.
+
+Fix validated:
+
+- Account-switch errors now return structured JSON with `state` instead of an ASGI 500.
+- The older-app compatibility dialog is handled explicitly.
+- Top-right close is only used when a known popup marker is present.
+- Screenshots are retried and validated as complete PNG files before OCR.
+- Search result clicks ignore hidden nodes and target the visible avatar area.
+- Retest `+8613062371708`: opened real Spam Info Bot, sent exact `/start`, classified `normal`, and wrote `status=active`.
+- Retest `+2349158725636`: opened real Spam Info Bot, sent exact `/start`, classified `banned`, and wrote `status=banned`.
+
 ### Fixes From This Run
 
 - `POST /accounts/sync-telegram` no longer overwrites banned or limited accounts with `status=active`.

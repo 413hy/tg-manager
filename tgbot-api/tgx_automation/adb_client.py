@@ -125,18 +125,27 @@ class AdbClient:
 
     def screenshot(self, out_path: Path) -> None:
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        proc = subprocess.run(
-            ["adb", "-s", self.serial, "exec-out", "screencap", "-p"],
-            capture_output=True,
-            check=False,
-        )
-        if proc.returncode != 0:
-            raise RuntimeError("failed screenshot")
-        out_path.write_bytes(proc.stdout)
+        last_error = ""
+        for _ in range(3):
+            proc = subprocess.run(
+                ["adb", "-s", self.serial, "exec-out", "screencap", "-p"],
+                capture_output=True,
+                check=False,
+            )
+            if proc.returncode == 0 and _looks_like_complete_png(proc.stdout):
+                out_path.write_bytes(proc.stdout)
+                return
+            last_error = proc.stderr.decode("utf-8", errors="replace") if isinstance(proc.stderr, bytes) else str(proc.stderr)
+            time.sleep(0.3)
+        raise RuntimeError(f"failed screenshot: invalid or truncated PNG {last_error}".strip())
 
 
 def _is_plain_adb_text(value: str) -> bool:
     return all(0x20 <= ord(ch) <= 0x7E for ch in value)
+
+
+def _looks_like_complete_png(data: bytes) -> bool:
+    return data.startswith(b"\x89PNG\r\n\x1a\n") and data.endswith(b"IEND\xaeB`\x82")
 
 
 def _modified_utf7_imap_encode(value: str) -> str:

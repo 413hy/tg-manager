@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 
+from tgx_automation.actions.interstitial import handle_common_interstitials
 from tgx_automation.adb_client import AdbClient
 from tgx_automation.ui_xml import parse_nodes
 from tgx_automation.ui_xml import find_node_by_resource, find_node_by_text
@@ -17,6 +18,7 @@ def recover_home(adb: AdbClient) -> list[str]:
     adb.start_activity("org.thunderdog.challegram/.MainActivity")
     steps.append("start-main")
     time.sleep(1.2)
+    steps.extend(handle_common_interstitials(adb))
     return steps
 
 
@@ -37,6 +39,7 @@ def open_account_switcher(adb: AdbClient) -> tuple[list[str], str]:
 
     adb.start_activity("org.thunderdog.challegram/.MainActivity")
     time.sleep(0.8)
+    steps.extend(handle_common_interstitials(adb))
     for _ in range(6):
         xml = adb.dump_ui_xml()
         if _is_chat_list(xml):
@@ -44,6 +47,7 @@ def open_account_switcher(adb: AdbClient) -> tuple[list[str], str]:
         adb.keyevent(4)
         steps.append("back toward chat list")
         time.sleep(0.8)
+        steps.extend(handle_common_interstitials(adb))
 
     adb.tap(56, 104)
     steps.append("open main drawer")

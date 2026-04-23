@@ -41,6 +41,13 @@ def handle_common_interstitials(adb: AdbClient) -> list[str]:
     actions: list[str] = []
     xml = adb.dump_ui_xml()
 
+    old_android_dialog = "older version of android" in xml.lower()
+    if old_android_dialog:
+        ok_node = find_node_by_text(xml, ["ok"])
+        if _tap_node(adb, ok_node):
+            actions.append("clicked Android compatibility dialog OK")
+            return actions
+
     # Most stable strategy in practice: back key first for transient overlays.
     if _try_back_first(adb, xml):
         actions.append("pressed BACK to dismiss popup/interstitial")
@@ -62,9 +69,10 @@ def handle_common_interstitials(adb: AdbClient) -> list[str]:
         actions.append("clicked btn_done")
         return actions
 
-    close = find_top_right_close(xml)
-    if _tap_node(adb, close):
-        actions.append("clicked top-right close")
-        return actions
+    if any(h in xml.lower() for h in POPUP_HINTS):
+        close = find_top_right_close(xml)
+        if _tap_node(adb, close):
+            actions.append("clicked top-right close")
+            return actions
 
     return actions

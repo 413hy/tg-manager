@@ -44,6 +44,7 @@ def _open_spambot(adb: AdbClient, work_dir: Path) -> list[str]:
     adb.shell("am start -a android.intent.action.VIEW -d 'tg://resolve?domain=SpamBot' org.thunderdog.challegram")
     steps.append("open SpamBot deeplink")
     time.sleep(2)
+    steps.extend(handle_common_interstitials(adb))
     if _is_spambot_view(adb, work_dir, "deeplink"):
         return steps
 
@@ -59,6 +60,7 @@ def _open_spambot(adb: AdbClient, work_dir: Path) -> list[str]:
         adb.tap(*center)
         steps.append(f"open search result candidate {index}")
         time.sleep(4)
+        steps.extend(handle_common_interstitials(adb))
         steps.append(_ocr_excerpt(adb, work_dir / f"spambot-search-candidate-{index}.png", f"search candidate {index}"))
         if _is_spambot_view(adb, work_dir, f"search-{index}"):
             return steps
@@ -170,12 +172,10 @@ def _search_result_centers(adb: AdbClient) -> list[tuple[int, int]]:
     for node in parse_nodes(xml):
         if not node.center:
             continue
-        if (
-            node.resource_id.endswith(":id/search_chat_local")
-            or node.resource_id.endswith(":id/search_chat_global")
-            or node.resource_id.endswith(":id/chat")
-        ):
-            centers.append(node.center)
+        if node.resource_id.endswith(":id/search_chat_local") or node.resource_id.endswith(":id/search_chat_global"):
+            y = node.center[1]
+            if 180 <= y <= 1120:
+                centers.append((80, y))
     if centers:
         return sorted(set(centers), key=lambda center: center[1])[:6]
 
