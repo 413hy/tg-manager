@@ -123,6 +123,7 @@ Final account state after the run:
 | --- | --- | --- |
 | `+94778807109` | Normal active account | `status=active`, `is_banned=0`, `has_restrictions=0` |
 | `+13149862659` | Banned account | `status=banned`, `is_banned=1`, `has_restrictions=1` |
+| `+2349158725636` | Banned account | `status=banned`, `is_banned=1`, `has_restrictions=1` |
 
 ### 2026-04-22 SpamBot Fix Retest
 
@@ -138,7 +139,20 @@ Fix validated:
 - `+94778807109` returned `status_result=normal` from the current SpamBot reply and wrote `status=active`.
 - `+13149862659` returned `status_result=banned` from the current SpamBot reply and wrote `status=banned`.
 - OCR text from the retest did not contain `//start`; `/start` may appear as `Istart` due OCR, but the sent command was verified before tapping send.
-| `+2349158725636` | Banned account | `status=banned`, `is_banned=1`, `has_restrictions=1` |
+
+### 2026-04-23 SpamBot Open-Flow Retest
+
+Regression found:
+
+- The SpamBot search overlay contains text such as `SpamBot`, `Chats and Contacts`, and `Global Search`.
+- The old open-flow verifier could treat that search overlay as if it were the real SpamBot message view because the underlying current chat still exposed `msg_list` / `msg_input`.
+- In that state, `/start` could be sent to the wrong current chat, and the status check would return `unknown` or a misleading result.
+
+Fix validated:
+
+- Search overlays are rejected explicitly and never considered a SpamBot chat.
+- A candidate is accepted only after OCR confirms `Spam Info Bot` on a real message view.
+- Retest with `+2349158725636` rejected two wrong candidates, opened the real Spam Info Bot on candidate 3, sent exact `/start`, read the current blocked response, and wrote `status=banned`.
 
 Fresh new-number login was not completed in this run because it requires a new external phone verification code. The login write-path was validated by the already-logged-in guard and invalid-submit guard: failed/invalid login submissions did not create new database rows.
 

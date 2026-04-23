@@ -212,25 +212,22 @@ def _is_spambot_view(adb: AdbClient, work_dir: Path, label: str) -> bool:
     screenshot = work_dir / f"spambot-open-{label}.png"
     adb.screenshot(screenshot)
     text = _ocr(screenshot).lower()
-    is_spambot = any(
-        marker in text
-        for marker in (
-            "spam info bot",
-            "spambot",
-            "appeal has been denied",
-            "restrictions have not been lifted",
-            "your account is limited",
-            "no restrictions",
-            "free as a bird",
-        )
-    )
-    if not is_spambot:
+    if _is_search_overlay(text):
+        return False
+    if "spam info bot" not in text:
         return False
     if _is_message_view(adb):
         return True
     adb.tap(360, 1050)
     time.sleep(2)
-    return _is_message_view(adb)
+    screenshot = work_dir / f"spambot-open-{label}-after-enter.png"
+    adb.screenshot(screenshot)
+    entered_text = _ocr(screenshot).lower()
+    return not _is_search_overlay(entered_text) and "spam info bot" in entered_text and _is_message_view(adb)
+
+
+def _is_search_overlay(text: str) -> bool:
+    return "chats and contacts" in text or "global search" in text
 
 
 def _ocr_excerpt(adb: AdbClient, path: Path, label: str) -> str:
