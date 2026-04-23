@@ -126,17 +126,45 @@ class AdbClient:
     def screenshot(self, out_path: Path) -> None:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         last_error = ""
-        for _ in range(3):
+        for _ in range(5):
             proc = subprocess.run(
                 ["adb", "-s", self.serial, "exec-out", "screencap", "-p"],
                 capture_output=True,
                 check=False,
             )
-            if proc.returncode == 0 and _looks_like_complete_png(proc.stdout):
-                out_path.write_bytes(proc.stdout)
+            png = _extract_complete_png(proc.stdout)
+            if proc.returncode == 0 and png:
+                out_path.write_bytes(png)
                 return
             last_error = proc.stderr.decode("utf-8", errors="replace") if isinstance(proc.stderr, bytes) else str(proc.stderr)
-            time.sleep(0.3)
+            time.sleep(0.4)
+
+        remote_path = "/sdcard/tgx_screenshot.png"
+        for _ in range(3):
+            proc = subprocess.run(
+                ["adb", "-s", self.serial, "shell", "screencap", "-p", remote_path],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if proc.returncode != 0:
+                last_error = proc.stderr
+                time.sleep(0.4)
+                continue
+            pull = subprocess.run(
+                ["adb", "-s", self.serial, "pull", remote_path, str(out_path)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if pull.returncode == 0:
+                data = out_path.read_bytes()
+                png = _extract_complete_png(data)
+                if png:
+                    out_path.write_bytes(png)
+                    return
+            last_error = pull.stderr
+            time.sleep(0.4)
         raise RuntimeError(f"failed screenshot: invalid or truncated PNG {last_error}".strip())
 
 
@@ -144,8 +172,15 @@ def _is_plain_adb_text(value: str) -> bool:
     return all(0x20 <= ord(ch) <= 0x7E for ch in value)
 
 
-def _looks_like_complete_png(data: bytes) -> bool:
-    return data.startswith(b"\x89PNG\r\n\x1a\n") and data.endswith(b"IEND\xaeB`\x82")
+def _extract_complete_png(data: bytes) -> bytes | None:
+    start = data.find(b"\x89PNG\r\n\x1a\n")
+    if start < 0:
+        return None
+    end_marker = b"IEND\xaeB`\x82"
+    end = data.find(end_marker, start)
+    if end < 0:
+        return None
+    return data[start : end + len(end_marker)]
 
 
 def _modified_utf7_imap_encode(value: str) -> str:

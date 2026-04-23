@@ -75,6 +75,10 @@ def _open_spambot(adb: AdbClient, work_dir: Path) -> list[str]:
 
 
 def _send_start(adb: AdbClient) -> list[str]:
+    if _tap_start_button(adb):
+        time.sleep(4)
+        return ["tap SpamBot start button"]
+
     xml = adb.dump_ui_xml()
     input_node = find_node_by_resource(xml, ["msg_input"])
     if input_node and input_node.center:
@@ -94,6 +98,18 @@ def _send_start(adb: AdbClient) -> list[str]:
         raise RuntimeError("failed to send exact /start command to SpamBot")
     time.sleep(4)
     return ["clear input and send exact /start to SpamBot"]
+
+
+def _tap_start_button(adb: AdbClient) -> bool:
+    xml = adb.dump_ui_xml()
+    for node in parse_nodes(xml):
+        label = node.text.strip().lower()
+        if label in {"start", "/start"} and node.center:
+            x, y = node.center
+            if y > 160:
+                adb.tap(x, y)
+                return True
+    return False
 
 
 def _clear_message_input(adb: AdbClient) -> None:

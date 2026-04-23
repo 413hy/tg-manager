@@ -176,6 +176,19 @@ Fix validated:
 - Retest `+8613062371708`: opened real Spam Info Bot, sent exact `/start`, classified `normal`, and wrote `status=active`.
 - Retest `+2349158725636`: opened real Spam Info Bot, sent exact `/start`, classified `banned`, and wrote `status=banned`.
 
+### 2026-04-23 Screenshot Fallback Retest
+
+Regression found:
+
+- `adb exec-out screencap -p` can repeatedly return an invalid or truncated PNG, causing `failed screenshot: invalid or truncated PNG`.
+- First-time SpamBot chats can expose a `Start` / `/start` button, so typing into the message box is not always necessary.
+
+Fix validated:
+
+- Screenshot capture now retries `exec-out`, extracts the complete PNG payload when extra bytes are present, and falls back to device-side `screencap -p /sdcard/tgx_screenshot.png` plus `adb pull`.
+- SpamBot status check taps a visible `Start` / `/start` button when present; otherwise it clears the message box and sends exact `/start`.
+- Retest `+8613062371708`: no screenshot failure, opened Spam Info Bot, sent `/start`, classified `normal`, and wrote `status=active`.
+
 ### Fixes From This Run
 
 - `POST /accounts/sync-telegram` no longer overwrites banned or limited accounts with `status=active`.
