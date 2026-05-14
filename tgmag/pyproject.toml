@@ -1,0 +1,19 @@
+[project]
+name = "tg-account-bot"
+version = "0.1.0"
+description = "Telegram multi-account management bot for authorized test accounts."
+requires-python = ">=3.11"
+dependencies = [
+  "aiogram>=3.6,<4",
+  "alembic>=1.13,<2",
+  "asyncpg>=0.29,<1",
+  "cryptography>=42,<46",
+  "pydantic>=2.7,<3",
+  "pydantic-settings>=2.2,<3",
+  "SQLAlchemy>=2.0,<3",
+  "Telethon>=1.36,<2",
+]
+
+[tool.ruff]
+line-length = 100
+
