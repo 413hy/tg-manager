@@ -1,0 +1,16 @@
+[Unit]
+Description=redroid Android container for Telegram automation
+After=docker.service network-online.target
+Wants=docker.service network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=/root/redroid/redroid.env
+ExecStart=/root/redroid/scripts/start_redroid.sh
+ExecStop=/root/redroid/scripts/stop_redroid.sh
+TimeoutStartSec=180
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target

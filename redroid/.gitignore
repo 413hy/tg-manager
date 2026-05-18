@@ -1,0 +1,10 @@
+redroid.env
+data/
+__pycache__/
+*.pyc
+*.sqlite3
+*.log
+*.png
+*.jpg
+*.jpeg
+*.webp
