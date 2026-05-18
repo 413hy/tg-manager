@@ -1,0 +1,17 @@
+[Unit]
+Description=Telegram Bot controller for redroid Telegram X login
+After=network-online.target redroid-vps.service appium-redroid.service
+Wants=network-online.target redroid-vps.service appium-redroid.service
+
+[Service]
+Type=simple
+WorkingDirectory=/root/redroid
+EnvironmentFile=/root/redroid/redroid.env
+ExecStart=/usr/bin/python3 -m bot.bot
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/var/log/tg-redroid-bot.log
+StandardError=append:/var/log/tg-redroid-bot.log
+
+[Install]
+WantedBy=multi-user.target

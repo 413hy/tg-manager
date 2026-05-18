@@ -1,0 +1,16 @@
+[Unit]
+Description=Appium server for redroid
+After=redroid-vps.service network-online.target
+Wants=redroid-vps.service network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/root/redroid/redroid.env
+Environment=ANDROID_HOME=/opt/android-sdk
+Environment=ANDROID_SDK_ROOT=/opt/android-sdk
+ExecStart=/root/redroid/scripts/start_appium.sh --foreground
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
