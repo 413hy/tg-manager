@@ -10,7 +10,7 @@ from pathlib import Path
 from aiogram import Bot, F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import BufferedInputFile, CallbackQuery, Message
 from sqlalchemy import delete, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from telethon.errors import PasswordHashInvalidError, SessionPasswordNeededError
@@ -43,7 +43,7 @@ from app.bot.keyboards import (
     settings_panel,
     twofa_panel,
 )
-from app.bot.states import ImportSessionFlow, LoginFlow, ProfileEditFlow, TwoFAEditFlow
+from app.bot.states import ExportSessionFlow, ImportSessionFlow, LoginFlow, ProfileEditFlow, TwoFAEditFlow
 from app.config import settings
 from app.db.models import (
     AccountSecurity,
@@ -74,6 +74,7 @@ MENU_TEXTS = {
     "账号管理": "accounts",
     "登录账号": "login",
     "导入Session": "import_session",
+    "导出Session": "export_session",
     "批量任务": "batch",
     "目标与速率": "settings",
     "监控中心": "monitor",
@@ -158,6 +159,105 @@ async def account_ids_from_range(session: AsyncSession, start_id: int, count: in
         .limit(count)
     )
     return list(rows.all())
+
+
+def parse_account_selection(value: str) -> list[int]:
+    tokens = [token.strip() for token in value.replace("，", ",").replace(" ", ",").split(",")]
+    account_ids: list[int] = []
+    seen: set[int] = set()
+    for token in tokens:
+        if not token:
+            continue
+        if "-" in token:
+            start_raw, end_raw = token.split("-", 1)
+            start_id, end_id = int(start_raw), int(end_raw)
+            if start_id > end_id:
+                start_id, end_id = end_id, start_id
+            values = range(start_id, end_id + 1)
+        else:
+            values = [int(token)]
+        for account_id in values:
+            if account_id not in seen:
+                seen.add(account_id)
+                account_ids.append(account_id)
+    if not account_ids:
+        raise ValueError("没有识别到账号ID")
+    return account_ids
+
+
+async def build_session_export(session: AsyncSession, account_ids: list[int]) -> tuple[str, int, list[str]]:
+    lines = [
+        "# Telethon StringSession export",
+        f"# generated_at={datetime.now(timezone.utc).isoformat()}",
+        "# 警告：string_session 等同于账号登录凭证，请不要发给不可信的人。",
+        "# 导入时使用 phone 和 string_session 两项。",
+        "",
+    ]
+    exported = 0
+    skipped: list[str] = []
+    for account_id in account_ids:
+        account = await session.get(TgAccount, account_id)
+        if account is None:
+            skipped.append(f"#{account_id}: 账号不存在")
+            continue
+        tg_session = await session.scalar(
+            select(TgSession)
+            .where(TgSession.account_id == account.id, TgSession.is_active.is_(True))
+            .order_by(TgSession.id.desc())
+            .limit(1)
+        )
+        if tg_session is None:
+            skipped.append(f"#{account.id}: 没有 active session")
+            continue
+        try:
+            phone = decrypt_text(account.phone_encrypted) or account.phone_masked
+            session_str = decrypt_text(tg_session.session_encrypted)
+        except Exception as exc:
+            skipped.append(f"#{account.id}: 解密失败 {exc}")
+            continue
+        if not session_str:
+            skipped.append(f"#{account.id}: session 为空")
+            continue
+        exported += 1
+        lines.extend(
+            [
+                "[account]",
+                f"account_id={account.id}",
+                f"telegram_user_id={account.user_id or ''}",
+                f"username={('@' + account.username) if account.username else ''}",
+                f"phone={phone}",
+                f"phone_masked={account.phone_masked}",
+                "session_type=telethon_string",
+                f"string_session={session_str}",
+                "",
+            ]
+        )
+    if skipped:
+        lines.append("[skipped]")
+        lines.extend(skipped)
+        lines.append("")
+    return "\n".join(lines), exported, skipped
+
+
+async def send_session_export(
+    message: Message,
+    sessionmaker: async_sessionmaker[AsyncSession],
+    account_ids: list[int],
+) -> None:
+    async with sessionmaker() as session:
+        content, exported, skipped = await build_session_export(session, account_ids)
+    if exported == 0:
+        await message.answer("没有可导出的 active session。\n" + ("\n".join(skipped) if skipped else ""))
+        return
+    if len(account_ids) == 1:
+        filename = f"tg_session_{account_ids[0]}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+    else:
+        filename = f"tg_sessions_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+    document = BufferedInputFile(content.encode("utf-8"), filename=filename)
+    caption = f"已导出 {exported} 个 active session。文件包含敏感登录凭证，请妥善保存。"
+    if skipped:
+        caption += f"\n跳过 {len(skipped)} 个账号，详情见文件底部。"
+    await message.answer_document(document, caption=caption[:1024])
 
 
 async def status_text(
@@ -506,6 +606,63 @@ async def import_session_value(message: Message, state: FSMContext, sessionmaker
     await state.clear()
     await message.answer(f"导入完成：账号ID #{account.id} {account.phone_masked}", reply_markup=main_menu())
     await message.answer("账号操作", reply_markup=account_actions_panel(account.id))
+
+
+@router.message(Command("export_session"))
+async def export_session(message: Message, sessionmaker: async_sessionmaker[AsyncSession]) -> None:
+    a = args(message)
+    if not a:
+        await message.answer("用法：/export_session <账号ID或Telegram ID>")
+        return
+    try:
+        async with sessionmaker() as session:
+            account_id = await resolve_account_id(session, a[0])
+        await send_session_export(message, sessionmaker, [account_id])
+    except Exception as exc:
+        await message.answer(f"导出失败：{exc}")
+
+
+@router.message(Command("export_sessions"))
+async def export_sessions(message: Message, sessionmaker: async_sessionmaker[AsyncSession]) -> None:
+    a = args(message)
+    if not a:
+        await message.answer("用法：/export_sessions <账号ID列表> 或 /export_sessions <start_id> <count>\n例：/export_sessions 1,3,5-8")
+        return
+    try:
+        async with sessionmaker() as session:
+            if len(a) >= 2 and a[0].isdigit() and a[1].isdigit():
+                account_ids = await account_ids_from_range(session, int(a[0]), int(a[1]))
+            else:
+                account_ids = parse_account_selection(" ".join(a))
+                account_ids = [await resolve_account_id(session, account_id) for account_id in account_ids]
+        await send_session_export(message, sessionmaker, account_ids)
+    except Exception as exc:
+        await message.answer(f"导出失败：{exc}")
+
+
+@router.message(Command("export_session_select"))
+async def export_session_select(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await state.set_state(ExportSessionFlow.selection)
+    await ask_with_cancel(message, "请输入要导出的账号ID，支持 1,3,5-8。", "1,3,5-8")
+
+
+@router.message(ExportSessionFlow.selection)
+async def export_session_selection(
+    message: Message,
+    state: FSMContext,
+    sessionmaker: async_sessionmaker[AsyncSession],
+) -> None:
+    try:
+        selected = parse_account_selection((message.text or "").strip())
+        async with sessionmaker() as session:
+            account_ids = [await resolve_account_id(session, account_id) for account_id in selected]
+        await send_session_export(message, sessionmaker, account_ids)
+        await state.clear()
+        await message.answer("导出流程已结束。", reply_markup=main_menu())
+    except Exception as exc:
+        await state.set_state(ExportSessionFlow.selection)
+        await ask_with_cancel(message, f"账号ID格式不正确或账号不存在：{exc}\n请重新输入。", "1,3,5-8")
 
 
 @router.message(Command("accounts"))
@@ -919,6 +1076,8 @@ async def menu_text_command(
         await login_start(message, state)
     elif action == "import_session":
         await import_session_start(message, state)
+    elif action == "export_session":
+        await export_session_select(message, state)
     elif action == "batch":
         await message.answer("批量任务入口", reply_markup=batch_panel())
     elif action == "settings":
@@ -967,6 +1126,10 @@ async def flow_callback(callback: CallbackQuery, state: FSMContext) -> None:
         await state.clear()
         await state.set_state(ImportSessionFlow.phone)
         await ask_with_cancel(callback.message, "请输入该 session 对应手机号。", "+8613800000000")
+    elif flow == "export_session":
+        await state.clear()
+        await state.set_state(ExportSessionFlow.selection)
+        await ask_with_cancel(callback.message, "请输入要导出的账号ID，支持 1,3,5-8。", "1,3,5-8")
 
 
 @router.callback_query(F.data.startswith("acct:"))
@@ -1050,6 +1213,9 @@ async def account_action_callback(
             async with sessionmaker() as session:
                 row = await session.get(PrivacySettings, account_id)
             text = f"隐私快照：{row.rules_json if row else '{}'}"
+        elif action == "export_session":
+            await send_session_export(callback.message, sessionmaker, [account_id])
+            text = "Session 导出完成。"
         else:
             text = "未知账号操作。"
     except Exception as exc:

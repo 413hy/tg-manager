@@ -14,6 +14,10 @@ class ImportSessionFlow(StatesGroup):
     session = State()
 
 
+class ExportSessionFlow(StatesGroup):
+    selection = State()
+
+
 class ProfileEditFlow(StatesGroup):
     value = State()
 

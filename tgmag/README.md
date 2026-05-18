@@ -5,7 +5,7 @@
 ## 功能范围
 
 - Telegram Bot 指令面板，仅允许 `.env` 中配置的管理员使用。
-- Telethon 用户账号登录、session 导入、重连、资料管理、2FA 管理、SpamBot 查询、777000 服务通知监控。
+- Telethon 用户账号登录、session 导入/导出、重连、资料管理、2FA 管理、SpamBot 查询、777000 服务通知监控。
 - 批量发送、关注、反应、浏览量、转发测试，统一经过目标白名单和速率控制。
 - PostgreSQL 持久化，敏感字段使用 Fernet 应用层加密。
 - Debian 12 `venv + systemd` 部署。
@@ -48,8 +48,9 @@ sudo journalctl -u tg-account-bot -f
 1. `/status`
 2. `/login`
 3. `/accounts`
-4. `/spam <账号ID>`
-5. `/service_monitor_on`
+4. `/export_session <账号ID>`
+5. `/spam <账号ID>`
+6. `/service_monitor_on`
 
 批量互动测试前必须先添加授权目标：
 

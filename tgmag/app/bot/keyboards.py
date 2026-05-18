@@ -16,7 +16,7 @@ def main_menu() -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="系统状态"), KeyboardButton(text="账号管理")],
-            [KeyboardButton(text="登录账号"), KeyboardButton(text="导入Session")],
+            [KeyboardButton(text="登录账号"), KeyboardButton(text="导入Session"), KeyboardButton(text="导出Session")],
             [KeyboardButton(text="批量任务"), KeyboardButton(text="目标与速率")],
             [KeyboardButton(text="监控中心"), KeyboardButton(text="隐藏键盘")],
         ],
@@ -64,11 +64,14 @@ def home_panel() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="导入 Session", callback_data="flow:import_session"),
             ],
             [
+                InlineKeyboardButton(text="导出 Session", callback_data="flow:export_session"),
                 InlineKeyboardButton(text="批量任务", callback_data="nav:batch"),
-                InlineKeyboardButton(text="目标与速率", callback_data="nav:settings"),
             ],
             [
+                InlineKeyboardButton(text="目标与速率", callback_data="nav:settings"),
                 InlineKeyboardButton(text="监控中心", callback_data="nav:monitor"),
+            ],
+            [
                 InlineKeyboardButton(text="完整指令", callback_data="nav:help"),
             ],
         ]
@@ -120,6 +123,9 @@ def account_actions_panel(account_id: int) -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(text="隐私设置", callback_data=f"acct_panel:privacy:{account_id}"),
                 InlineKeyboardButton(text="2FA 设置", callback_data=f"acct_panel:twofa:{account_id}"),
+            ],
+            [
+                InlineKeyboardButton(text="导出 Session", callback_data=f"acct_action:export_session:{account_id}"),
             ],
             [
                 InlineKeyboardButton(text="返回列表", callback_data="nav:accounts"),
@@ -226,8 +232,9 @@ def batch_panel() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(text="转发模板", callback_data="template:forward"),
-                InlineKeyboardButton(text="返回", callback_data="nav:home"),
+                InlineKeyboardButton(text="导出 Session", callback_data="flow:export_session"),
             ],
+            [InlineKeyboardButton(text="返回", callback_data="nav:home")],
         ]
     )
 
