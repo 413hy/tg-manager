@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import shlex
 import asyncio
 import tempfile
@@ -43,7 +44,7 @@ from app.bot.keyboards import (
     settings_panel,
     twofa_panel,
 )
-from app.bot.states import ExportSessionFlow, ImportSessionFlow, LoginFlow, ProfileEditFlow, TwoFAEditFlow
+from app.bot.states import ExportSessionFlow, ImportSessionFlow, ImportSessionsFlow, LoginFlow, ProfileEditFlow, TwoFAEditFlow
 from app.config import settings
 from app.db.models import (
     AccountSecurity,
@@ -74,6 +75,7 @@ MENU_TEXTS = {
     "账号管理": "accounts",
     "登录账号": "login",
     "导入Session": "import_session",
+    "批量导入Session": "import_sessions",
     "导出Session": "export_session",
     "批量任务": "batch",
     "目标与速率": "settings",
@@ -258,6 +260,97 @@ async def send_session_export(
     if skipped:
         caption += f"\n跳过 {len(skipped)} 个账号，详情见文件底部。"
     await message.answer_document(document, caption=caption[:1024])
+
+
+def parse_session_import_payload(content: str) -> list[tuple[str, str]]:
+    accounts: list[tuple[str, str]] = []
+    current: dict[str, str] = {}
+
+    def flush_current() -> None:
+        phone = (current.get("phone") or "").strip()
+        session_str = (current.get("string_session") or current.get("session") or "").strip()
+        if phone and session_str:
+            accounts.append((phone, session_str))
+
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.lower() == "[account]":
+            flush_current()
+            current = {}
+            continue
+        if line.startswith("[") and line.endswith("]"):
+            flush_current()
+            current = {}
+            continue
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        current[key.strip().lower()] = value.strip()
+    flush_current()
+
+    unique: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for phone, session_str in accounts:
+        marker = f"{phone}:{session_str}"
+        if marker in seen:
+            continue
+        seen.add(marker)
+        unique.append((phone, session_str))
+    if not unique:
+        raise ValueError("未检测到可导入的账号。请上传由 /export_sessions 导出的 txt 文件。")
+    return unique
+
+
+async def read_session_import_content(message: Message, bot: Bot) -> str:
+    if message.document:
+        if message.document.file_size and message.document.file_size > 5 * 1024 * 1024:
+            raise ValueError("文件过大，请上传 5MB 以内的 txt 文件。")
+        buffer = io.BytesIO()
+        await bot.download(message.document, destination=buffer)
+        return buffer.getvalue().decode("utf-8", errors="replace")
+    if message.text:
+        return message.text
+    raise ValueError("请上传导出的 txt 文件，或直接粘贴文件内容。")
+
+
+async def import_session_payload(
+    sessionmaker: async_sessionmaker[AsyncSession],
+    content: str,
+) -> tuple[int, int, str]:
+    entries = parse_session_import_payload(content)
+    ok_lines: list[str] = []
+    failed_lines: list[str] = []
+    for index, (phone, session_str) in enumerate(entries, start=1):
+        try:
+            async with sessionmaker() as session:
+                account = await account_ops.import_session(session, phone, session_str)
+            ok_lines.append(f"{index}. OK #{account.id} {account.phone_masked} user_id={account.user_id or '-'}")
+        except Exception as exc:
+            masked = account_ops.mask_phone(phone)
+            failed_lines.append(f"{index}. FAIL {masked}: {exc}")
+    lines = [
+        f"批量导入完成：成功 {len(ok_lines)}，失败 {len(failed_lines)}，总计 {len(entries)}",
+        "",
+        "[success]",
+        *(ok_lines or ["无"]),
+        "",
+        "[failed]",
+        *(failed_lines or ["无"]),
+    ]
+    return len(ok_lines), len(failed_lines), "\n".join(lines)
+
+
+async def send_import_report(message: Message, report: str) -> None:
+    if len(report) <= 3500:
+        await message.answer(report)
+        return
+    filename = f"tg_session_import_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+    await message.answer_document(
+        BufferedInputFile(report.encode("utf-8"), filename=filename),
+        caption="批量导入完成，详情见报告文件。",
+    )
 
 
 async def status_text(
@@ -606,6 +699,32 @@ async def import_session_value(message: Message, state: FSMContext, sessionmaker
     await state.clear()
     await message.answer(f"导入完成：账号ID #{account.id} {account.phone_masked}", reply_markup=main_menu())
     await message.answer("账号操作", reply_markup=account_actions_panel(account.id))
+
+
+@router.message(Command("import_sessions"))
+async def import_sessions_start(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await state.set_state(ImportSessionsFlow.payload)
+    await ask_with_cancel(message, "请上传 /export_sessions 导出的 txt 文件，或直接粘贴文件内容。", "上传 txt 文件或粘贴内容")
+
+
+@router.message(ImportSessionsFlow.payload)
+async def import_sessions_payload(
+    message: Message,
+    state: FSMContext,
+    bot: Bot,
+    sessionmaker: async_sessionmaker[AsyncSession],
+) -> None:
+    try:
+        content = await read_session_import_content(message, bot)
+        _, _, report = await import_session_payload(sessionmaker, content)
+    except Exception as exc:
+        await state.set_state(ImportSessionsFlow.payload)
+        await ask_with_cancel(message, f"批量导入失败：{exc}\n请重新上传文件，或取消当前操作。", "上传 txt 文件或粘贴内容")
+        return
+    await state.clear()
+    await send_import_report(message, report)
+    await message.answer("批量导入流程已结束。", reply_markup=main_menu())
 
 
 @router.message(Command("export_session"))
@@ -1076,6 +1195,8 @@ async def menu_text_command(
         await login_start(message, state)
     elif action == "import_session":
         await import_session_start(message, state)
+    elif action == "import_sessions":
+        await import_sessions_start(message, state)
     elif action == "export_session":
         await export_session_select(message, state)
     elif action == "batch":
@@ -1126,6 +1247,10 @@ async def flow_callback(callback: CallbackQuery, state: FSMContext) -> None:
         await state.clear()
         await state.set_state(ImportSessionFlow.phone)
         await ask_with_cancel(callback.message, "请输入该 session 对应手机号。", "+8613800000000")
+    elif flow == "import_sessions":
+        await state.clear()
+        await state.set_state(ImportSessionsFlow.payload)
+        await ask_with_cancel(callback.message, "请上传 /export_sessions 导出的 txt 文件，或直接粘贴文件内容。", "上传 txt 文件或粘贴内容")
     elif flow == "export_session":
         await state.clear()
         await state.set_state(ExportSessionFlow.selection)
