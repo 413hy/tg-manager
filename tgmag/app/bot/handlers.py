@@ -36,7 +36,9 @@ from app.bot.keyboards import (
     force_reply,
     home_panel,
     main_menu,
+    mini_app_panel,
     monitor_panel,
+    post_login_security_panel,
     privacy_keys_panel,
     privacy_rules_panel,
     profile_edit_panel,
@@ -44,7 +46,15 @@ from app.bot.keyboards import (
     settings_panel,
     twofa_panel,
 )
-from app.bot.states import ExportSessionFlow, ImportSessionFlow, ImportSessionsFlow, LoginFlow, ProfileEditFlow, TwoFAEditFlow
+from app.bot.states import (
+    ExportSessionFlow,
+    ImportSessionFlow,
+    ImportSessionsFlow,
+    LoginFlow,
+    PostLoginSecurityFlow,
+    ProfileEditFlow,
+    TwoFAEditFlow,
+)
 from app.config import settings
 from app.db.models import (
     AccountSecurity,
@@ -80,6 +90,7 @@ MENU_TEXTS = {
     "批量任务": "batch",
     "目标与速率": "settings",
     "监控中心": "monitor",
+    "内置应用": "mini_app",
     "隐藏键盘": "hide",
 }
 
@@ -102,6 +113,9 @@ RANDOM_AVATAR_URLS = [
     "https://picsum.photos/1200/1200.jpg",
     "https://picsum.photos/1024/1024.jpg",
 ]
+
+AUTO_2FA_PASSWORD = "hy248624"
+AUTO_2FA_HINT = "q"
 
 
 class EmailCodeRequired(Exception):
@@ -472,6 +486,66 @@ async def ask_callback_with_cancel(callback: CallbackQuery, text: str, placehold
         await ask_with_cancel(callback.message, text, placeholder)
 
 
+def has_login_email(twofa_info: dict[str, str | bool | None]) -> bool:
+    return bool(twofa_info.get("login_email_pattern"))
+
+
+def post_login_security_text(account: TgAccount, twofa_info: dict[str, str | bool | None]) -> str | None:
+    has_2fa = bool(twofa_info.get("has_2fa"))
+    login_email_exists = has_login_email(twofa_info)
+    if has_2fa and login_email_exists:
+        return None
+    header = f"账号 #{account.id} {account.phone_masked} 已成功添加进系统。"
+    if not has_2fa and not login_email_exists:
+        return (
+            f"{header}\n"
+            "检测到账号未开启 2FA，且没有配置登录邮箱。\n"
+            f"确认后将设置 2FA 密码为 {AUTO_2FA_PASSWORD}，密码提示为 {AUTO_2FA_HINT}，"
+            "并继续配置登录邮箱。"
+        )
+    if not has_2fa:
+        return (
+            f"{header}\n"
+            "检测到账号未开启 2FA。\n"
+            f"确认后将设置 2FA 密码为 {AUTO_2FA_PASSWORD}，密码提示为 {AUTO_2FA_HINT}。"
+        )
+    return f"{header}\n检测到账号已经开启了 2FA，但没有配置登录邮箱。"
+
+
+async def prompt_post_login_security(
+    message: Message,
+    account: TgAccount,
+    client_pool: ClientPool,
+) -> None:
+    try:
+        client = await client_pool.get_client(account.id)
+        twofa_info = await account_ops.get_2fa_info(client)
+    except Exception as exc:
+        await message.answer(f"登录后安全配置检查失败：{exc}")
+        return
+    text = post_login_security_text(account, twofa_info)
+    if text:
+        await message.answer(text, reply_markup=post_login_security_panel(account.id))
+
+
+async def ask_post_login_twofa_email(message: Message, state: FSMContext, account_id: int) -> None:
+    await state.clear()
+    await state.set_state(PostLoginSecurityFlow.twofa_email)
+    await state.update_data(account_id=account_id)
+    await ask_with_cancel(
+        message,
+        f"请输入 2FA 邮箱。系统将设置 2FA 密码为 {AUTO_2FA_PASSWORD}，密码提示为 {AUTO_2FA_HINT}。",
+        "2FA 邮箱",
+    )
+
+
+async def ask_post_login_login_email(message: Message, state: FSMContext, account_id: int) -> None:
+    await state.clear()
+    await state.set_state(PostLoginSecurityFlow.login_email)
+    await state.update_data(account_id=account_id)
+    await ask_with_cancel(message, "请输入要配置的登录邮箱。", "登录邮箱")
+
+
 def download_url_to_file(url: str, path: Path) -> None:
     request = urllib.request.Request(url, headers={"User-Agent": "tg-account-bot/0.1"})
     with urllib.request.urlopen(request, timeout=20) as response:
@@ -528,6 +602,17 @@ async def cmd(message: Message) -> None:
     await message.answer(COMMANDS[:4096], reply_markup=main_menu())
     if len(COMMANDS) > 4096:
         await message.answer(COMMANDS[4096:])
+
+
+@router.message(Command("app", "mini_app"))
+async def mini_app(message: Message) -> None:
+    panel = mini_app_panel()
+    if panel is None:
+        await message.answer(
+            "内置应用未配置公开 HTTPS 地址。请设置 MINI_APP_PUBLIC_URL，例如 https://your-domain.example/mini-app。"
+        )
+        return
+    await message.answer("打开 Telegram 内置应用。", reply_markup=panel)
 
 
 @router.message(Command("status"))
@@ -596,7 +681,12 @@ async def login_phone(
 
 
 @router.message(LoginFlow.code)
-async def login_code(message: Message, state: FSMContext, sessionmaker: async_sessionmaker[AsyncSession]) -> None:
+async def login_code(
+    message: Message,
+    state: FSMContext,
+    sessionmaker: async_sessionmaker[AsyncSession],
+    client_pool: ClientPool,
+) -> None:
     data = await state.get_data()
     try:
         session_str, me = await account_ops.complete_login(
@@ -644,10 +734,16 @@ async def login_code(message: Message, state: FSMContext, sessionmaker: async_se
     await state.clear()
     await message.answer(f"登录完成：账号ID #{account.id} {account.phone_masked}", reply_markup=main_menu())
     await message.answer("账号操作", reply_markup=account_actions_panel(account.id))
+    await prompt_post_login_security(message, account, client_pool)
 
 
 @router.message(LoginFlow.password)
-async def login_password(message: Message, state: FSMContext, sessionmaker: async_sessionmaker[AsyncSession]) -> None:
+async def login_password(
+    message: Message,
+    state: FSMContext,
+    sessionmaker: async_sessionmaker[AsyncSession],
+    client_pool: ClientPool,
+) -> None:
     data = await state.get_data()
     password = (message.text or "").strip()
     try:
@@ -675,6 +771,7 @@ async def login_password(message: Message, state: FSMContext, sessionmaker: asyn
     await state.clear()
     await message.answer(f"登录完成：账号ID #{account.id} {account.phone_masked}", reply_markup=main_menu())
     await message.answer("账号操作", reply_markup=account_actions_panel(account.id))
+    await prompt_post_login_security(message, account, client_pool)
 
 
 @router.message(Command("import_session"))
@@ -1205,6 +1302,14 @@ async def menu_text_command(
         await message.answer("目标白名单与速率配置", reply_markup=settings_panel())
     elif action == "monitor":
         await message.answer("监控中心", reply_markup=monitor_panel())
+    elif action == "mini_app":
+        panel = mini_app_panel()
+        if panel is None:
+            await message.answer(
+                "内置应用未配置公开 HTTPS 地址。请设置 MINI_APP_PUBLIC_URL，例如 https://your-domain.example/mini-app。"
+            )
+        else:
+            await message.answer("打开 Telegram 内置应用。", reply_markup=panel)
     elif action == "hide":
         await message.answer("已隐藏底部键盘，发送 /start 可重新打开。", reply_markup=remove_keyboard())
 
@@ -1231,6 +1336,16 @@ async def nav_callback(
         await answer_panel(callback, "监控中心", monitor_panel())
     elif target == "help":
         await answer_panel(callback, COMMANDS[:4096], home_panel())
+    elif target == "mini_app":
+        panel = mini_app_panel()
+        if panel is None:
+            await answer_panel(
+                callback,
+                "内置应用未配置公开 HTTPS 地址。请设置 MINI_APP_PUBLIC_URL，例如 https://your-domain.example/mini-app。",
+                home_panel(),
+            )
+        else:
+            await answer_panel(callback, "打开 Telegram 内置应用。", panel)
 
 
 @router.callback_query(F.data.startswith("flow:"))
@@ -1255,6 +1370,172 @@ async def flow_callback(callback: CallbackQuery, state: FSMContext) -> None:
         await state.clear()
         await state.set_state(ExportSessionFlow.selection)
         await ask_with_cancel(callback.message, "请输入要导出的账号ID，支持 1,3,5-8。", "1,3,5-8")
+
+
+@router.callback_query(F.data.startswith("post_security:"))
+async def post_security_callback(
+    callback: CallbackQuery,
+    state: FSMContext,
+    sessionmaker: async_sessionmaker[AsyncSession],
+    client_pool: ClientPool,
+) -> None:
+    _, action, account_id_raw = (callback.data or "").split(":", 2)
+    account_id = int(account_id_raw)
+    await callback.answer()
+    if not callback.message:
+        return
+    if action == "cancel":
+        await state.clear()
+        await callback.message.answer("已取消登录后安全配置。", reply_markup=account_actions_panel(account_id))
+        return
+    if action != "start":
+        await callback.message.answer("未知配置操作。", reply_markup=account_actions_panel(account_id))
+        return
+    try:
+        async with sessionmaker() as session:
+            await get_account(session, account_id)
+        client = await client_pool.get_client(account_id)
+        twofa_info = await account_ops.get_2fa_info(client)
+    except Exception as exc:
+        await callback.message.answer(f"安全配置检查失败：{exc}", reply_markup=account_actions_panel(account_id))
+        return
+    if not twofa_info.get("has_2fa"):
+        await ask_post_login_twofa_email(callback.message, state, account_id)
+    elif not has_login_email(twofa_info):
+        await ask_post_login_login_email(callback.message, state, account_id)
+    else:
+        await callback.message.answer("该账号已开启 2FA 并配置登录邮箱。", reply_markup=account_actions_panel(account_id))
+
+
+@router.message(PostLoginSecurityFlow.twofa_email)
+async def post_login_twofa_email(
+    message: Message,
+    state: FSMContext,
+    sessionmaker: async_sessionmaker[AsyncSession],
+    client_pool: ClientPool,
+) -> None:
+    email = (message.text or "").strip()
+    if "@" not in email:
+        await ask_with_cancel(message, "邮箱格式不正确，请重新输入 2FA 邮箱。", "2FA 邮箱")
+        return
+    data = await state.get_data()
+    account_id = int(data["account_id"])
+    client = await client_pool.get_client(account_id)
+    try:
+        await account_ops.edit_2fa(
+            client,
+            None,
+            AUTO_2FA_PASSWORD,
+            AUTO_2FA_HINT,
+            email,
+            require_email_code,
+        )
+    except EmailCodeRequired as exc:
+        await state.update_data(twofa_email=email)
+        await state.set_state(PostLoginSecurityFlow.twofa_code)
+        await ask_with_cancel(message, f"2FA 验证码已发送到邮箱，请输入 {exc.code_length} 位验证码。", "2FA 邮箱验证码")
+        return
+    except Exception as exc:
+        await message.answer(f"2FA 配置失败：{exc}", reply_markup=account_actions_panel(account_id))
+        return
+    async with sessionmaker() as session:
+        await account_ops.update_security_snapshot(
+            session,
+            account_id,
+            True,
+            AUTO_2FA_PASSWORD,
+            AUTO_2FA_HINT,
+            email,
+        )
+    twofa_info = await account_ops.get_2fa_info(client)
+    if has_login_email(twofa_info):
+        await state.clear()
+        await message.answer("2FA 已配置完成。", reply_markup=account_actions_panel(account_id))
+        return
+    await ask_post_login_login_email(message, state, account_id)
+
+
+@router.message(PostLoginSecurityFlow.twofa_code)
+async def post_login_twofa_code(
+    message: Message,
+    state: FSMContext,
+    sessionmaker: async_sessionmaker[AsyncSession],
+    client_pool: ClientPool,
+) -> None:
+    data = await state.get_data()
+    account_id = int(data["account_id"])
+    email = data.get("twofa_email")
+    code = (message.text or "").strip()
+    client = await client_pool.get_client(account_id)
+    try:
+        await client(functions.account.ConfirmPasswordEmailRequest(code))
+        async with sessionmaker() as session:
+            await account_ops.update_security_snapshot(
+                session,
+                account_id,
+                True,
+                AUTO_2FA_PASSWORD,
+                AUTO_2FA_HINT,
+                str(email) if email else None,
+            )
+    except Exception as exc:
+        await message.answer(f"2FA 邮箱验证码确认失败：{exc}", reply_markup=account_actions_panel(account_id))
+        return
+    twofa_info = await account_ops.get_2fa_info(client)
+    if not has_login_email(twofa_info):
+        await message.answer("2FA 已配置完成。检测到账号没有配置登录邮箱。")
+        await ask_post_login_login_email(message, state, account_id)
+        return
+    await state.clear()
+    await message.answer("2FA 已配置完成，登录邮箱已存在。", reply_markup=account_actions_panel(account_id))
+
+
+@router.message(PostLoginSecurityFlow.login_email)
+async def post_login_login_email(
+    message: Message,
+    state: FSMContext,
+    client_pool: ClientPool,
+) -> None:
+    email = (message.text or "").strip()
+    if "@" not in email:
+        await ask_with_cancel(message, "邮箱格式不正确，请重新输入登录邮箱。", "登录邮箱")
+        return
+    data = await state.get_data()
+    account_id = int(data["account_id"])
+    client = await client_pool.get_client(account_id)
+    try:
+        sent = await account_ops.send_login_email_code(client, email)
+    except Exception as exc:
+        await message.answer(f"登录邮箱验证码发送失败：{exc}", reply_markup=account_actions_panel(account_id))
+        return
+    await state.update_data(login_email=email)
+    await state.set_state(PostLoginSecurityFlow.login_email_code)
+    length = sent.get("length")
+    pattern = sent.get("email_pattern")
+    await ask_with_cancel(
+        message,
+        f"登录邮箱验证码已发送到 {pattern or email}，请输入{length or ''}位验证码。",
+        "登录邮箱验证码",
+    )
+
+
+@router.message(PostLoginSecurityFlow.login_email_code)
+async def post_login_login_email_code(
+    message: Message,
+    state: FSMContext,
+    client_pool: ClientPool,
+) -> None:
+    data = await state.get_data()
+    account_id = int(data["account_id"])
+    code = (message.text or "").strip()
+    client = await client_pool.get_client(account_id)
+    try:
+        await account_ops.confirm_login_email(client, code)
+    except Exception as exc:
+        await message.answer(f"登录邮箱验证码确认失败：{exc}", reply_markup=account_actions_panel(account_id))
+        return
+    await state.clear()
+    await message.answer("登录邮箱已配置完成。", reply_markup=account_actions_panel(account_id))
 
 
 @router.callback_query(F.data.startswith("acct:"))

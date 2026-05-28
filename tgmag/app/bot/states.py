@@ -29,3 +29,10 @@ class ProfileEditFlow(StatesGroup):
 class TwoFAEditFlow(StatesGroup):
     value = State()
     email_code = State()
+
+
+class PostLoginSecurityFlow(StatesGroup):
+    twofa_email = State()
+    twofa_code = State()
+    login_email = State()
+    login_email_code = State()

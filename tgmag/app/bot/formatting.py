@@ -19,6 +19,7 @@ def account_line(account: TgAccount) -> str:
 
 COMMANDS = """可用指令
 /start - 打开菜单
+/app - 打开 Telegram 内置应用
 /cmd - 查看指令
 /status - 系统状态
 /accounts - 账号列表

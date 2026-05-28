@@ -8,6 +8,7 @@
 - Telethon 用户账号登录、session 单个/批量导入导出、重连、资料管理、2FA 管理、SpamBot 查询、777000 服务通知监控。
 - 批量发送、关注、反应、浏览量、转发测试，统一经过目标白名单和速率控制。
 - PostgreSQL 持久化，敏感字段使用 Fernet 应用层加密。
+- Telegram Mini App 内置管理面板，可在 Bot 内打开账号、批量任务、白名单和速率页面。
 - Debian 12 `venv + systemd` 部署。
 
 ## 快速部署
@@ -53,6 +54,23 @@ sudo journalctl -u tg-account-bot -f
 6. `/import_sessions`
 7. `/spam <账号ID>`
 8. `/service_monitor_on`
+
+Mini App 入口：
+
+```text
+/app
+```
+
+启用前需要在 `.env` 中配置：
+
+```env
+MINI_APP_ENABLED=true
+MINI_APP_HOST=127.0.0.1
+MINI_APP_PORT=8080
+MINI_APP_PUBLIC_URL=https://your-domain.example/mini-app
+```
+
+`MINI_APP_PUBLIC_URL` 必须是 Telegram 客户端可访问的 HTTPS 地址，可由 Nginx/Caddy 反向代理到本地 `MINI_APP_HOST:MINI_APP_PORT`。
 
 批量互动测试前必须先添加授权目标：
 

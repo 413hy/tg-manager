@@ -163,11 +163,14 @@ async def check_2fa(client: TelegramClient) -> bool:
 
 async def get_2fa_info(client: TelegramClient) -> dict[str, str | bool | None]:
     password = await client(functions.account.GetPasswordRequest())
+    login_email_pattern = getattr(password, "login_email_pattern", None)
+    email_unconfirmed_pattern = getattr(password, "email_unconfirmed_pattern", None)
     return {
         "has_2fa": bool(password.has_password),
         "hint": getattr(password, "hint", None),
-        "email_pattern": getattr(password, "login_email_pattern", None)
-        or getattr(password, "email_unconfirmed_pattern", None),
+        "email_pattern": login_email_pattern or email_unconfirmed_pattern,
+        "login_email_pattern": login_email_pattern,
+        "email_unconfirmed_pattern": email_unconfirmed_pattern,
     }
 
 
@@ -185,6 +188,25 @@ async def edit_2fa(
         hint=hint or "",
         email=email,
         email_code_callback=email_code_callback,
+    )
+
+
+async def send_login_email_code(client: TelegramClient, email: str) -> dict[str, str | int]:
+    sent = await client(
+        functions.account.SendVerifyEmailCodeRequest(
+            purpose=types.EmailVerifyPurposeLoginChange(),
+            email=email,
+        )
+    )
+    return {"email_pattern": sent.email_pattern, "length": sent.length}
+
+
+async def confirm_login_email(client: TelegramClient, code: str) -> None:
+    await client(
+        functions.account.VerifyEmailRequest(
+            purpose=types.EmailVerifyPurposeLoginChange(),
+            verification=types.EmailVerificationCode(code),
+        )
     )
 
 

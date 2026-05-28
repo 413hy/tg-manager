@@ -73,8 +73,32 @@ PY
 - `DEFAULT_JITTER_MAX`: 批量动作最大随机等待秒数。
 - `SERVICE_MONITOR_INTERVAL_SECONDS`: 服务通知监控间隔。
 - `LOG_LEVEL`: 日志级别。
+- `MINI_APP_ENABLED`: 是否启动内置 Mini App HTTP 服务。
+- `MINI_APP_HOST`: Mini App HTTP 服务监听地址，生产环境建议监听 `127.0.0.1` 后由反向代理公开。
+- `MINI_APP_PORT`: Mini App HTTP 服务监听端口。
+- `MINI_APP_PUBLIC_URL`: Telegram Bot 按钮打开的公开 HTTPS 地址，路径应指向 `/mini-app`。
+- `MINI_APP_AUTH_MAX_AGE_SECONDS`: Telegram initData 最大有效时间。
 
 不要把真实 `.env`、session、数据库备份上传到仓库。
+
+## 4.1 Telegram Mini App
+
+Mini App 与 Bot 同进程启动，默认路径为 `/mini-app`，API 路径为 `/mini-app/api/*`。启用示例：
+
+```env
+MINI_APP_ENABLED=true
+MINI_APP_HOST=127.0.0.1
+MINI_APP_PORT=8080
+MINI_APP_PUBLIC_URL=https://your-domain.example/mini-app
+```
+
+Telegram 客户端要求 Web App 使用可访问的 HTTPS 地址。生产环境可用 Nginx 或 Caddy 将公网 HTTPS 反向代理到：
+
+```text
+http://127.0.0.1:8080/mini-app
+```
+
+Mini App 后端会校验 `Telegram.WebApp.initData` 签名，并复用 `.env`/数据库中的管理员白名单。
 
 ## 5. 数据库迁移
 
@@ -124,4 +148,3 @@ pg_dump 'postgresql://tg_bot:change_me@127.0.0.1:5432/tg_account_bot' \
 ```
 
 数据库内 session、2FA、手机号等字段为加密值，`FERNET_KEY` 必须单独安全保存。
-

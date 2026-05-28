@@ -10,6 +10,7 @@ from app.config import settings
 from app.db.session import init_db, sessionmaker
 from app.services.bootstrap import bootstrap_defaults
 from app.tg.client_pool import ClientPool
+from app.webapp.server import start_webapp
 
 
 async def main() -> None:
@@ -27,14 +28,19 @@ async def main() -> None:
     dp = Dispatcher(sessionmaker=sessionmaker, client_pool=pool)
     dp.include_router(router)
 
+    web_runner = await start_webapp(sessionmaker, pool)
+    if web_runner is not None:
+        logging.info("Mini App server started on %s:%s", settings.mini_app_host, settings.mini_app_port)
+
     await pool.connect_all_active()
     try:
         await dp.start_polling(bot)
     finally:
+        if web_runner is not None:
+            await web_runner.cleanup()
         await pool.disconnect_all()
         await bot.session.close()
 
 
 if __name__ == "__main__":
     asyncio.run(main())
-

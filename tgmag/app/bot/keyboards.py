@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.db.models import TgAccount
+from app.config import settings
 
 from aiogram.types import (
     ForceReply,
@@ -9,16 +10,23 @@ from aiogram.types import (
     KeyboardButton,
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
+    WebAppInfo,
 )
 
 
 def main_menu() -> ReplyKeyboardMarkup:
+    mini_app_url = settings.mini_app_public_url.strip()
+    mini_app_button = (
+        KeyboardButton(text="内置应用", web_app=WebAppInfo(url=mini_app_url))
+        if mini_app_url
+        else KeyboardButton(text="内置应用")
+    )
     return ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="系统状态"), KeyboardButton(text="账号管理")],
             [KeyboardButton(text="登录账号"), KeyboardButton(text="导入Session"), KeyboardButton(text="导出Session")],
             [KeyboardButton(text="批量导入Session"), KeyboardButton(text="批量任务")],
-            [KeyboardButton(text="目标与速率"), KeyboardButton(text="监控中心")],
+            [KeyboardButton(text="目标与速率"), KeyboardButton(text="监控中心"), mini_app_button],
             [KeyboardButton(text="隐藏键盘")],
         ],
         resize_keyboard=True,
@@ -54,6 +62,12 @@ def force_reply(placeholder: str) -> ForceReply:
 
 
 def home_panel() -> InlineKeyboardMarkup:
+    mini_app_url = settings.mini_app_public_url.strip()
+    mini_app_button = (
+        InlineKeyboardButton(text="打开内置应用", web_app=WebAppInfo(url=mini_app_url))
+        if mini_app_url
+        else InlineKeyboardButton(text="打开内置应用", callback_data="nav:mini_app")
+    )
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -76,6 +90,19 @@ def home_panel() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="监控中心", callback_data="nav:monitor"),
                 InlineKeyboardButton(text="完整指令", callback_data="nav:help"),
             ],
+            [mini_app_button],
+        ]
+    )
+
+
+def mini_app_panel() -> InlineKeyboardMarkup | None:
+    mini_app_url = settings.mini_app_public_url.strip()
+    if not mini_app_url:
+        return None
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="打开内置应用", web_app=WebAppInfo(url=mini_app_url))],
+            [InlineKeyboardButton(text="返回", callback_data="nav:home")],
         ]
     )
 
@@ -132,6 +159,23 @@ def account_actions_panel(account_id: int) -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(text="返回列表", callback_data="nav:accounts"),
             ],
+        ]
+    )
+
+
+def post_login_security_panel(account_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="确认开始配置",
+                    callback_data=f"post_security:start:{account_id}",
+                ),
+                InlineKeyboardButton(
+                    text="取消配置",
+                    callback_data=f"post_security:cancel:{account_id}",
+                ),
+            ]
         ]
     )
 

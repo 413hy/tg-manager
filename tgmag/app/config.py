@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     default_jitter_max: int = Field(default=6, alias="DEFAULT_JITTER_MAX")
     service_monitor_interval_seconds: int = Field(default=300, alias="SERVICE_MONITOR_INTERVAL_SECONDS")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
+    mini_app_enabled: bool = Field(default=False, alias="MINI_APP_ENABLED")
+    mini_app_host: str = Field(default="127.0.0.1", alias="MINI_APP_HOST")
+    mini_app_port: int = Field(default=8080, alias="MINI_APP_PORT")
+    mini_app_public_url: str = Field(default="", alias="MINI_APP_PUBLIC_URL")
+    mini_app_auth_max_age_seconds: int = Field(default=86400, alias="MINI_APP_AUTH_MAX_AGE_SECONDS")
 
     @field_validator("admin_ids", mode="before")
     @classmethod
@@ -42,4 +47,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-
